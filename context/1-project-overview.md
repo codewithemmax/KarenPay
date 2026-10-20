@@ -21,7 +21,6 @@ KarenPay moves no money and holds none. PayPal's sandbox does the money movement
 
 ## Demo Actions
 * `send_money`: PayPal Payouts to a sandbox account. The main demo.
-* `pay_merchant`: PayPal Orders to a sandbox merchant. A short second action that proves Core is a layer. This is the first thing cut if the schedule slips.
 
 ## What KarenPay Must NOT Claim
 * Bank-grade, certified, compliant with any regulation, unhackable, or safe for real money.
@@ -35,7 +34,6 @@ KarenPay moves no money and holds none. PayPal's sandbox does the money movement
 
 ## Scope (Release Gate, submit November 11, 2026)
 * send_money works by voice end to end in the PayPal sandbox with fingerprint or face confirmation.
-* pay_merchant works through the same Core.
 * Tamper, replay and expiry attacks are rejected, with published results.
 * Test suites run with one command and report counts, with and without the intent check.
 * At least 3 screen-reader users have tested it, with notes published.
@@ -46,6 +44,7 @@ KarenPay moves no money and holds none. PayPal's sandbox does the money movement
 ## Out of Scope
 * Shopping catalog or product search, balances, ledger, KYC, bank features.
 * Real money, live PayPal credentials, delegated spending when the person is absent.
+* Merchant checkout and Orders payments.
 * Siri or Android voice shortcuts. The demo is a web app.
 * Jev. Cut to protect the deadline.
 

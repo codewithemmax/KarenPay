@@ -10,7 +10,7 @@ Scope: this file documents the backend and Core. The teammate owns the web clien
 | Database | Supabase (PostgreSQL) | Accounts, passkey credentials, contacts, mandates, audit events. Supabase Auth is not used. |
 | Passkeys | SimpleWebAuthn (`@simplewebauthn/server` and `@simplewebauthn/browser`) | Registration, login and approval assertions. |
 | AI | Gemini API with structured output | Transcript to proposed action only. |
-| Payments | PayPal sandbox REST (Orders v2, Payouts) called with plain `fetch` | Money movement. No PayPal SDK on the server. |
+| Payments | PayPal sandbox Payouts REST called with plain `fetch` | Money movement. No PayPal SDK on the server. |
 | Web client | Next.js with the Web Speech API | Owned by the teammate. |
 | Hosting | Render (API and web) | Environment variables set in the Render dashboard. |
 | Tests | Vitest, fast-check, Playwright (Chromium virtual authenticator) | Logic, randomized attack trials, passkey flows. |
@@ -35,7 +35,7 @@ karenpay/
 
 **contacts**: id, account_id, display_name, paypal_sandbox_email, created_at. Maximum 5 per account.
 
-**mandates**: id, account_id, action (`send_money` or `pay_merchant`), payee_contact_id, amount_minor (positive integer), currency, constraints (jsonb), request_hash, nonce, issued_at, expires_at, spoken_text, mandate_hash, state, paypal_ref, created_at, updated_at.
+**mandates**: id, account_id, action (`send_money`), payee_contact_id, amount_minor (positive integer), currency, constraints (jsonb), request_hash, nonce, issued_at, expires_at, spoken_text, mandate_hash, state, paypal_ref, created_at, updated_at.
 
 **audit_events**: id, mandate_id (nullable), account_id, event_type, detail (jsonb), prev_hash, hash, created_at. The hash chains each row to the previous one.
 
@@ -70,6 +70,6 @@ Gemini is called only by `POST /api/v1/intent`. It receives the transcript and t
 5. Single use is enforced by the atomic state transition, never by application memory.
 6. Amount is a positive integer in minor units, below the policy maximum. Currency is on the whitelist.
 7. Recipient must be one of the caller's contacts.
-8. PayPal calls use the mandate id as the idempotency key (`sender_batch_id` for Payouts, `PayPal-Request-Id` for Orders). Confirm exact behavior in PayPal's docs.
+8. PayPal Payouts calls use the mandate id as `sender_batch_id`.
 9. Credentials and secrets never reach the browser, Gemini, logs or Git.
 10. Every outcome writes an audit event, including every rejection and its reason.

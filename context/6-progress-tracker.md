@@ -6,22 +6,27 @@ Update this file after every meaningful implementation change.
 * Pre build. Product brief v1.0 is done. Nothing is built. Today is Day 4 (October 20, 2026).
 
 ## Current Goal
-* Pass Gate 1: a PayPal sandbox Payouts send and an Orders payment from code, then scaffold the repo.
+* Pass Gate 1: a PayPal sandbox Payouts send from code, then scaffold the repo.
 
 ## Current State
 * Product brief KarenPay v1.0 finalized. Test plan from the security research is adopted (see Architecture Decisions).
 * Unit 1 scaffold is complete: workspace manifests, strict TypeScript, Vitest,
   security policy, API documentation placeholder, and repository layout are
   present. Bun build and test checks pass.
+* Unit 2 client is implemented with sandbox-only URL enforcement, OAuth token
+  caching, Payouts, `sender_batch_id` idempotency, and schema validation. The
+  configured sandbox OAuth endpoint and a Payouts send were confirmed on
+  October 20, 2026. `send_money` is the only payment action in scope.
 
 ## Completed
 * Unit 1: repo scaffold, Apache-2.0, SECURITY.md.
+* Unit 2: PayPal Sandbox OAuth and Payouts client.
 
 ## In Progress
 * (not started)
 
 ## Next Up
-* Unit 2: PayPal sandbox client for Orders and Payouts.
+* Unit 3: additive Supabase database migrations.
 * Start contacting screen-reader testers today.
 
 ## Open Questions

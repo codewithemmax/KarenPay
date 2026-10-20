@@ -8,8 +8,8 @@ Each unit is one atomic step: one PR-sized piece of work, testable and reviewabl
 * Depends on: none.
 
 ## Unit 2: PayPal Sandbox Client (Oct 20 to 21) GATE 1
-* Scope: In `apps/api`, a small client using `fetch` for the sandbox OAuth token, Payouts send (`send_money`) and Orders create plus capture (`pay_merchant`). Use the mandate id as the idempotency key. Settle the open questions on currency, Payouts availability and Orders approval.
-* Done when: One Payouts send to a sandbox account succeeds from code and one Orders payment succeeds from code, or the Orders question is answered and recorded in `6-progress-tracker.md`.
+* Scope: In `apps/api`, a small client using `fetch` for the sandbox OAuth token and Payouts send (`send_money`). Use the mandate id as `sender_batch_id`.
+* Done when: One Payouts send to a sandbox account succeeds from code, with currency and Payouts availability recorded in `6-progress-tracker.md`.
 * Depends on: Unit 1.
 
 ## Unit 3: Database Migrations (Oct 21)
@@ -48,8 +48,8 @@ Each unit is one atomic step: one PR-sized piece of work, testable and reviewabl
 * Depends on: Unit 2, Unit 8.
 
 ## Unit 10: AP2 Schema Validation (Oct 26)
-* Scope: Validate the `pay_merchant` mandate against AP2's published JSON schemas and record the mapping. Record that `send_money` is inspired by AP2, not validated.
-* Done when: Validation passes or a list of mismatches is documented. The README wording follows the result.
+* Scope: Removed with the `pay_merchant` action.
+* Done when: Not applicable; merchant payments are out of scope.
 * Depends on: Unit 5.
 
 ## Unit 11: Gemini Intent Endpoint (Oct 26 to 27)
@@ -62,10 +62,9 @@ Each unit is one atomic step: one PR-sized piece of work, testable and reviewabl
 * Done when: 5 voice-only sends in a row succeed on the demo phone, and confirm stays disabled until the readout ends.
 * Depends on: Unit 9, Unit 11.
 
-## Unit 13: pay_merchant Action (Oct 30)
-* Scope: The second action through the same Core, using Orders. Skip this unit if Unit 2 showed it is not feasible.
-* Done when: A merchant payment passes through the same mandate, hash, passkey and consume path.
-* Depends on: Unit 9, Unit 10.
+## Unit 13: Removed Merchant Action (Oct 30)
+* Scope: Removed. KarenPay supports only `send_money` through PayPal Payouts.
+* Done when: Not applicable.
 
 ## Unit 14: Audit Log and Retry Safety (Oct 30 to 31)
 * Scope: Hash-chained audit events, `GET /api/v1/audit`, and the retry-after-network-drop behavior (one payment only).
