@@ -1,0 +1,22 @@
+{
+  "name": "karenpay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An open-source consent layer for AI-initiated sandbox payments.",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -10,16 +10,17 @@ Update this file after every meaningful implementation change.
 
 ## Current State
 * Product brief KarenPay v1.0 finalized. Test plan from the security research is adopted (see Architecture Decisions).
-* No repository, accounts or keys confirmed yet.
+* Unit 1 scaffold is complete: workspace manifests, strict TypeScript, Vitest,
+  security policy, API documentation placeholder, and repository layout are
+  present. Bun build and test checks pass.
 
 ## Completed
-* (none yet)
+* Unit 1: repo scaffold, Apache-2.0, SECURITY.md.
 
 ## In Progress
 * (not started)
 
 ## Next Up
-* Unit 1: repo scaffold, Apache-2.0, SECURITY.md.
 * Unit 2: PayPal sandbox client for Orders and Payouts.
 * Start contacting screen-reader testers today.
 
