@@ -1,0 +1,29 @@
+# KarenPay: Backend and Core Agent Rules
+
+Read `context/1-project-overview.md` through `context/7-units.md` before writing any code. Full detail lives there; this file is the always-loaded summary.
+
+## Non-negotiable
+* Sandbox only. The PayPal base URL must be the sandbox host. No live credentials, no real money, anywhere in code, tests, docs or logs.
+* Gemini proposes, code checks, the person approves. Gemini never approves anything and never sets the final amount or recipient. Every value it returns passes schema validation and the intent check before a mandate exists.
+* The WebAuthn challenge is always the SHA-256 hash of the RFC 8785 canonical mandate. Never use a random challenge for an approval.
+* Never weaken, skip, stub or mock a security check to make a test pass. If a test fails, fix the code or stop and ask.
+* Fail closed. Any missing, malformed or mismatched value means no payment, an audit event, and a clear error.
+* One approval, one payment. The CREATED to CONSUMED transition is a single atomic database update. Expiry uses the database clock.
+* Amounts are positive integers in minor units. Never floats. Currency must be on the whitelist.
+* Recipients must exist in the caller's own contact list (maximum 5).
+* Store no biometrics and no raw audio. Store only WebAuthn public keys and metadata.
+* No secrets in Git, ever. Environment variables live in the Render dashboard and a local untracked `.env`.
+* Use only the approved vocabulary in `context/3-ui-context.md`. Never write "bank-grade", "certified", "compliant", "unhackable", or "AP2 compatible" until schema validation passes.
+* Out of scope, always: product catalog or search, balances, ledger, KYC, bank features, Jev, real-money flows. Elastic is a stretch task and starts only when `context/6-progress-tracker.md` says so.
+* Migrations are additive only. Never edit an applied migration.
+
+## Working style
+* One atomic unit at a time, from `context/7-units.md`, in order. Do not skip ahead or batch units.
+* Write the test for each security rule first, then the code.
+* If a requirement conflicts with the context files or a detail is missing, stop and ask. Do not assume.
+* Document every new endpoint, table or migration in `docs/KARENPAY_API.md` in the same session.
+* Before every push: `git diff --check`, `git status --short`, then `npm run build` and `npm test`.
+* After every unit, update `context/6-progress-tracker.md`.
+
+## Target
+Submit to the PayPal AI Hackathon on November 11, 2026 (deadline November 12, 12:00 pm PST). See `context/1-project-overview.md` for the release gate.
