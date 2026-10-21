@@ -215,3 +215,47 @@ function integerToWords(value: number): string {
   }
   return groups.join(" ");
 }
+
+export const MandateStateSchema = z.enum([
+  "CREATED",
+  "CONSUMED",
+  "PAID",
+  "FAILED",
+  "REJECTED",
+  "EXPIRED",
+]);
+
+export type MandateState = z.infer<typeof MandateStateSchema>;
+
+export type MandateEvent = "CONSUME" | "REJECT" | "PAYMENT_SUCCEEDED" | "PAYMENT_FAILED";
+
+export type StateTransitionResult =
+  | { accepted: true; state: MandateState }
+  | { accepted: false; state: MandateState; code: "INVALID_TRANSITION" };
+
+/**
+ * Calculates state transitions without reading a clock or mutating storage.
+ * The database repeats the CREATED-to-CONSUMED guard atomically before payment.
+ */
+export function transitionMandateState(
+  state: MandateState,
+  event: MandateEvent,
+  expiresAt: Date,
+  now: Date,
+): StateTransitionResult {
+  if (event === "CONSUME" && state === "CREATED") {
+    return now >= expiresAt
+      ? { accepted: true, state: "EXPIRED" }
+      : { accepted: true, state: "CONSUMED" };
+  }
+  if (event === "REJECT" && state === "CREATED") {
+    return { accepted: true, state: "REJECTED" };
+  }
+  if (event === "PAYMENT_SUCCEEDED" && state === "CONSUMED") {
+    return { accepted: true, state: "PAID" };
+  }
+  if (event === "PAYMENT_FAILED" && state === "CONSUMED") {
+    return { accepted: true, state: "FAILED" };
+  }
+  return { accepted: false, state, code: "INVALID_TRANSITION" };
+}

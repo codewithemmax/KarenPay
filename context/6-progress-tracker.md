@@ -3,10 +3,10 @@
 Update this file after every meaningful implementation change.
 
 ## Current Phase
-* Build phase. Product brief v1.0 is done. Unit 4 is in progress; Units 5 and 6 are complete (October 21, 2026).
+* Build phase. Product brief v1.0 is done. Units 4 and 7 are in progress; Units 5 and 6 are complete (October 21, 2026).
 
 ## Current Goal
-* Pass Gate 2: register and log in with a passkey on the real demo phone over HTTPS.
+* Complete Unit 7: state transitions and atomic mandate consumption.
 
 ## Current State
 * Product brief KarenPay v1.0 finalized. Test plan from the security research is adopted (see Architecture Decisions).
@@ -26,6 +26,7 @@ Update this file after every meaningful implementation change.
 
 ## In Progress
 * Unit 4: passkey registration and login.
+* Unit 7: Core state machine and atomic consume.
 
 ## Next Up
 * Unit 7: Core state machine and atomic consume.
