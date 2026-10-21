@@ -2,5 +2,9 @@
   "name": "@karenpay/core",
   "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "canonicalize": "5.1.0",
+    "zod": "3.25.76"
+  }
 }

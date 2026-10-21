@@ -3,7 +3,7 @@
 Update this file after every meaningful implementation change.
 
 ## Current Phase
-* Build phase. Product brief v1.0 is done. Unit 4 is in progress (October 21, 2026).
+* Build phase. Product brief v1.0 is done. Unit 4 is in progress; Unit 5 is complete (October 21, 2026).
 
 ## Current Goal
 * Pass Gate 2: register and log in with a passkey on the real demo phone over HTTPS.
@@ -21,12 +21,13 @@ Update this file after every meaningful implementation change.
 * Unit 1: repo scaffold, Apache-2.0, SECURITY.md.
 * Unit 2: PayPal Sandbox OAuth and Payouts client.
 * Unit 3: additive Supabase database migrations, applied through the Supabase SQL Editor.
+* Unit 5: Core mandate validation, RFC 8785 canonicalization, and SHA-256 hash.
 
 ## In Progress
 * Unit 4: passkey registration and login.
 
 ## Next Up
-* Unit 5: Core mandate, canonicalization and hash.
+* Unit 6: Core readout, intent check and limits.
 * Start contacting screen-reader testers today.
 
 ## Open Questions
