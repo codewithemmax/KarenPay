@@ -73,7 +73,7 @@ class SupabaseMandateStore {
   async createAuditEvent(accountId: string, mandateId: string | null, eventType: string, detail: object): Promise<void> {
     const detailText = JSON.stringify(detail);
     const hash = createHash("sha256")
-      .update(`${accountId}:${mandateId ?? ""}:${eventType}:${detailText}`)
+      .update(`${randomUUID()}:${accountId}:${mandateId ?? ""}:${eventType}:${detailText}`)
       .digest("base64url");
     await this.request("audit_events", {
       method: "POST",
