@@ -19,7 +19,7 @@ flowchart LR
 
     subgraph external["External services"]
         gemini["Gemini API<br/>structured intent proposal only"]
-        paypal["PayPal Sandbox REST<br/>Orders v2 · Payouts"]
+        paypal["PayPal Sandbox REST<br/>Payouts"]
         passkey["Browser / platform authenticator<br/>WebAuthn"]
     end
 

@@ -48,7 +48,7 @@ Each unit is one atomic step: one PR-sized piece of work, testable and reviewabl
 * Depends on: Unit 2, Unit 8.
 
 ## Unit 10: AP2 Schema Validation (Oct 26)
-* Scope: Removed with the `pay_merchant` action.
+* Scope: Removed. Merchant payments are out of scope.
 * Done when: Not applicable; merchant payments are out of scope.
 * Depends on: Unit 5.
 

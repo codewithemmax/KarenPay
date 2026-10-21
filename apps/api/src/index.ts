@@ -1,4 +1,15 @@
 import { z } from "zod";
+import express, { type Express } from "express";
+import { createAuthRouter, loadAuthConfig } from "./auth.js";
+
+export { createAuthRouter, loadAuthConfig } from "./auth.js";
+
+export function createKarenPayApi(): Express {
+  const app = express();
+  app.use(express.json({ limit: "32kb" }));
+  app.use("/api/v1/auth", createAuthRouter(loadAuthConfig()));
+  return app;
+}
 
 const oauthResponseSchema = z.object({
   access_token: z.string().min(1),

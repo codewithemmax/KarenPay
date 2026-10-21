@@ -22,5 +22,5 @@ A sandbox OAuth check was run against
 returned HTTP 200 and an access token, confirming that the configured app
 credentials and base URL are valid. No live PayPal host was called.
 
-The sandbox Payouts send has been confirmed with the configured sandbox
-business account. `send_money` is the only payment action in scope.
+The sandbox OAuth check and Payouts send are confirmed with the configured
+sandbox business account. `send_money` is the only payment action in scope.
