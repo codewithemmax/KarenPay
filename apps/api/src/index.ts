@@ -1,13 +1,16 @@
 import { z } from "zod";
 import express, { type Express } from "express";
 import { createAuthRouter, loadAuthConfig } from "./auth.js";
+import { createMandateRouter, loadMandateConfig } from "./mandates.js";
 
 export { createAuthRouter, loadAuthConfig } from "./auth.js";
+export { createMandateRouter, loadMandateConfig } from "./mandates.js";
 
 export function createKarenPayApi(): Express {
   const app = express();
   app.use(express.json({ limit: "32kb" }));
   app.use("/api/v1/auth", createAuthRouter(loadAuthConfig()));
+  app.use("/api/v1/mandates", createMandateRouter(loadMandateConfig()));
   return app;
 }
 

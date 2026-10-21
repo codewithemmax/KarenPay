@@ -277,6 +277,12 @@ export function createAuthRouter(config: AuthConfig): Router {
   return router;
 }
 
+/** Returns the authenticated account ID from the signed session cookie. */
+export function getAuthenticatedAccountId(request: Request, secret: string): string | undefined {
+  const session = getSignedValue<Session>(request, secret, sessionCookieName);
+  return session && session.expiresAt > Date.now() ? session.accountId : undefined;
+}
+
 function getCeremony(request: Request, secret: string, kind: Ceremony["kind"]): Ceremony {
   const ceremony = getSignedValue<Ceremony>(request, secret, ceremonyCookieName);
   if (!ceremony || ceremony.kind !== kind || ceremony.expiresAt <= Date.now()) {
@@ -300,7 +306,7 @@ function setSignedCookie(response: Response, name: string, value: object, secret
     httpOnly: true,
     secure: true,
     sameSite: "strict",
-    path: "/api/v1/auth",
+    path: "/api/v1",
     maxAge: maxAge * 1000,
   });
 }
@@ -342,7 +348,7 @@ function clearCookie(response: Response, name: string): void {
     httpOnly: true,
     secure: true,
     sameSite: "strict",
-    path: "/api/v1/auth",
+    path: "/api/v1",
   });
 }
 

@@ -3,10 +3,10 @@
 Update this file after every meaningful implementation change.
 
 ## Current Phase
-* Build phase. Product brief v1.0 is done. Units 4 and 7 are in progress; Units 5 and 6 are complete (October 21, 2026).
+* Build phase. Product brief v1.0 is done. Units 4, 7, and 8 are in progress; Units 5 and 6 are complete (October 21, 2026).
 
 ## Current Goal
-* Complete Unit 7: state transitions and atomic mandate consumption.
+* Complete Unit 8: authenticated mandate creation and approval options.
 
 ## Current State
 * Product brief KarenPay v1.0 finalized. Test plan from the security research is adopted (see Architecture Decisions).
@@ -27,6 +27,7 @@ Update this file after every meaningful implementation change.
 ## In Progress
 * Unit 4: passkey registration and login.
 * Unit 7: Core state machine and atomic consume.
+* Unit 8: mandate create endpoint.
 
 ## Next Up
 * Unit 7: Core state machine and atomic consume.
