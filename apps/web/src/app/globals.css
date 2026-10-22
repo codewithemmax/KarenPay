@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #F4F7F6;
+  --surface: #FFFFFF;
+  --surface-tint: #E6F4F1;
+  --text: #0B1F1A;
+  --text-muted: #3F5550;
+  --primary: #0F766E;
+  --primary-strong: #115E59;
+  --balance-card: #064E3B;
+  --danger: #B42318;
+  --danger-strong: #912018;
+  --success: #067647;
+  --success-strong: #085D3A;
+  --warning-bg: #FEF0C7;
+  --warning-text: #7A2E0E;
+  --input-border: #5B6F69;
+  --divider: #D5DFDC;
+}
+
+@layer base {
+  html {
+    scrollbar-gutter: stable;
+  }
+
+  html,
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-inter), "Inter", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  *:focus-visible {
+    outline: 3px solid #0B1F1A;
+    outline-offset: 2px;
+  }
+
+  .on-dark *:focus-visible,
+  .on-dark:focus-visible {
+    outline: 3px solid #FFFFFF;
+    outline-offset: 2px;
+  }
+}
+
+.num {
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
