@@ -93,4 +93,112 @@ describe("POST /api/v1/intent", () => {
       expect(await response.json()).toEqual({ code: "INTENT_INVALID", message: "Please say the recipient, amount, and currency." });
     });
   });
+
+  it("requires a valid signed session and enforces the per-account rate limit", async () => {
+    const client: GeminiIntentClient = {
+      extract: async () => ({
+        action: "send_money",
+        contactIndex: 0,
+        amountMinor: 5000,
+        currency: "USD",
+        needsClarification: false,
+        candidateIndexes: [0],
+      }),
+    };
+    const app = express();
+    app.use(express.json());
+    app.use("/api/v1/intent", createIntentRouter({ ...config, maxRequestsPerMinute: 1 }, client));
+    const nativeFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).startsWith("https://example.supabase.co")) return new Response(JSON.stringify(contacts));
+      return nativeFetch(input, init);
+    }) as typeof fetch;
+    const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+      const listener = app.listen(0, () => resolve(listener));
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Test server did not receive a TCP address");
+      const url = `http://127.0.0.1:${address.port}`;
+
+      const unauthenticated = await nativeFetch(`${url}/api/v1/intent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: "Send fifty dollars to Ade Bello" }),
+      });
+      expect(unauthenticated.status).toBe(401);
+      expect(await unauthenticated.json()).toEqual({
+        code: "AUTH_REQUIRED",
+        message: "Please sign in before requesting a test payment.",
+      });
+
+      const first = await intentRequest(url);
+      expect(first.status).toBe(200);
+
+      const second = await intentRequest(url);
+      expect(second.status).toBe(429);
+      expect(await second.json()).toEqual({
+        code: "RATE_LIMITED",
+        message: "Please wait before trying again.",
+      });
+    } finally {
+      globalThis.fetch = nativeFetch;
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
+
+  it("extracts a spoken recipient name and digit-by-digit account number without requiring saved contacts", async () => {
+    const client: GeminiIntentClient = {
+      extract: async (_transcript, names) => {
+        expect(names).toEqual([]);
+        return {
+          action: "send_money",
+          contactIndex: null,
+          payeeName: "Ade Bello",
+          payeeAccountNumber: "0123456789",
+          amountMinor: 5000,
+          currency: "USD",
+          needsClarification: false,
+          candidateIndexes: [],
+        };
+      },
+    };
+    const app = express();
+    app.use(express.json());
+    app.use("/api/v1/intent", createIntentRouter(config, client));
+    const nativeFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).startsWith("https://example.supabase.co")) return new Response(JSON.stringify([]));
+      return nativeFetch(input, init);
+    }) as typeof fetch;
+    const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+      const listener = app.listen(0, () => resolve(listener));
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Test server did not receive a TCP address");
+      const url = `http://127.0.0.1:${address.port}`;
+      const response = await nativeFetch(`${url}/api/v1/intent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: sessionCookie() },
+        body: JSON.stringify({
+          transcript: "Send fifty dollars to Ade Bello account number zero one two three four five six seven eight nine",
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        needsClarification: false,
+        proposal: {
+          action: "send_money",
+          payeeName: "Ade Bello",
+          payeeAccountNumber: "0123456789",
+          amountMinor: 5000,
+          currency: "USD",
+        },
+      });
+    } finally {
+      globalThis.fetch = nativeFetch;
+      await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
 });

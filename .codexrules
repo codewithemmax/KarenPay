@@ -10,7 +10,7 @@ Read `context/1-project-overview.md` through `context/7-units.md` before writing
 * Fail closed. Any missing, malformed or mismatched value means no payment, an audit event, and a clear error.
 * One approval, one payment. The CREATED to CONSUMED transition is a single atomic database update. Expiry uses the database clock.
 * Amounts are positive integers in minor units. Never floats. Currency must be on the whitelist.
-* Recipients must exist in the caller's own contact list (maximum 5).
+* Recipients must either exist in the caller's own contact list (maximum 5) or include a spoken recipient name and 6-to-20 digit account number read back digit by digit.
 * Store no biometrics and no raw audio. Store only WebAuthn public keys and metadata.
 * No secrets in Git, ever. Environment variables live in the Render dashboard and a local untracked `.env`.
 * Use only the approved vocabulary in `context/3-ui-context.md`. Never write "bank-grade", "certified", "compliant", "unhackable", or "AP2 compatible" until schema validation passes.

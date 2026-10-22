@@ -22,7 +22,8 @@ The readout is built from the mandate's fields only. Gemini's words never appear
 "You asked to send fifty dollars to Ade Bello. That is five, zero dollars. This is a test payment. To approve, use your fingerprint or face now."
 
 Rules:
-* Name the recipient in full, exactly as stored in the contact.
+* Name the recipient in full, exactly as stored in the contact or spoken with the account number.
+* When a recipient account number is used, read the account number digit by digit immediately after the recipient's name (for example, "to Ade Bello, account number zero, one, two, three, four, five, six, seven, eight, nine").
 * Say the amount in words and then digit by digit.
 * State the comparison with the request when constraints exist, for example "You asked for under one hundred dollars."
 * End with one clear instruction for the passkey step.

@@ -141,4 +141,54 @@ describe("POST /api/v1/mandates", () => {
       globalThis.fetch = nativeFetch;
     }
   });
+
+  it("creates a mandate with a spoken recipient name and digit-by-digit account number", async () => {
+    const nativeFetch = globalThis.fetch;
+    const supabaseFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co")) {
+        return new Response("", { status: 201 });
+      }
+      return nativeFetch(input, init);
+    });
+    globalThis.fetch = supabaseFetch as typeof fetch;
+    try {
+      await withServer(async (url) => {
+        const response = await fetch(`${url}/api/v1/mandates`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Cookie: sessionCookie() },
+          body: JSON.stringify({
+            proposal: {
+              action: "send_money",
+              payeeName: "Ade Bello",
+              payeeAccountNumber: "0123456789",
+              amountMinor: 5000,
+              currency: "USD",
+            },
+            requestConstraints: {
+              action: "send_money",
+              payeeName: "Ade Bello",
+              payeeAccountNumber: "0123456789",
+              maximumAmountMinor: 10_000,
+              currency: "USD",
+            },
+            requestHash: "request-hash-acct",
+          }),
+        });
+        expect(response.status).toBe(201);
+        const body = await response.json() as {
+          mandateId: string;
+          mandateHash: string;
+          spoken: string;
+          readoutRequired: boolean;
+          approvalOptions: { challenge: string; userVerification: string };
+        };
+        expect(body.readoutRequired).toBe(true);
+        expect(body.spoken).toContain("Ade Bello, account number zero, one, two, three, four, five, six, seven, eight, nine");
+        expect(body.approvalOptions.challenge).toBe(body.mandateHash);
+      });
+    } finally {
+      globalThis.fetch = nativeFetch;
+    }
+  });
 });

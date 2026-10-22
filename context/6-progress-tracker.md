@@ -3,10 +3,10 @@
 Update this file after every meaningful implementation change.
 
 ## Current Phase
-* Build phase. Product brief v1.0 is done. Unit 10 is removed; Units 4, 7, 8, 9, and 11 await their live acceptance checks; Units 5, 6, and 10 are complete or not applicable (October 21, 2026).
+* Build phase. Product brief v1.0 is done. Unit 10 is removed; Units 4, 7, 8, and 9 await their live acceptance checks; Units 5, 6, 10, and 11 are complete or not applicable (October 22, 2026).
 
 ## Current Goal
-* Run Unit 11 live acceptance checks with the configured Gemini model.
+* Complete Unit 12 (Client Integration Support) and remaining live acceptance gates for Units 4, 7, 8, and 9.
 
 ## Current State
 * Product brief KarenPay v1.0 finalized. Test plan from the security research is adopted (see Architecture Decisions).
@@ -16,7 +16,7 @@ Update this file after every meaningful implementation change.
 * Unit 2 client is implemented and tested with sandbox-only URL enforcement,
   OAuth token caching, Payouts, `sender_batch_id` idempotency, and schema
   validation. `send_money` is the only payment action in scope.
-* Unit 11 endpoint is implemented: it retrieves at most five owned contacts, sends only transcript and display names to Gemini structured output, strictly validates the reply, returns clarification for ambiguity, and rate-limits requests per account.
+* Unit 11 endpoint (`POST /api/v1/intent`) is implemented, tested, and documented in `docs/KARENPAY_API.md`: it retrieves at most five owned contacts, supports spoken recipient name + digit-by-digit account number (`payeeName` and `payeeAccountNumber`) with full digit-by-digit readout in `buildReadout`, sends only transcript and display names to Gemini structured output, strictly validates the reply, returns clarification for ambiguity, and rate-limits requests per account.
 
 ## Completed
 * Unit 1: repo scaffold, Apache-2.0, SECURITY.md.
@@ -25,13 +25,13 @@ Update this file after every meaningful implementation change.
 * Unit 5: Core mandate validation, RFC 8785 canonicalization, and SHA-256 hash.
 * Unit 6: deterministic readout, intent validation, and payment limits.
 * Unit 10: not applicable; merchant payments are out of scope.
+* Unit 11: Gemini intent endpoint (`POST /api/v1/intent`), strict schema validation, clarification handling, rate limiting, and API documentation.
 
 ## In Progress
 * Unit 4: passkey registration and login.
 * Unit 7: Core state machine and atomic consume.
 * Unit 8: mandate create endpoint.
 * Unit 9: mandate approval and sandbox payout.
-* Unit 11: live Gemini acceptance check (10 clean spoken-style requests).
 
 ## Next Up
 * Unit 7: Core state machine and atomic consume.
@@ -59,6 +59,6 @@ Update this file after every meaningful implementation change.
   git clone https://github.com/<your-username>/karenpay.git
   cd karenpay
   git switch -c core/unit-01-scaffold
-  npm install
+  bun install
   ```
 * Daily control loop: pull dev, complete one narrow unit, test it, commit and push, update this file, then name the next unit.

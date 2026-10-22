@@ -122,7 +122,9 @@ export function createMandateRouter(config: MandateConfig): Router {
         await store.createAuditEvent(accountId, null, "MANDATE_REJECTED", { code: intentResult.code });
         return response.status(422).json({ code: intentResult.code, message: "The payment details do not match your request." });
       }
-      const contact = await store.getOwnedContact(accountId, input.proposal.payeeContactId);
+      const contact = input.proposal.payeeContactId
+        ? await store.getOwnedContact(accountId, input.proposal.payeeContactId)
+        : undefined;
       const limitsResult = checkLimits(input.proposal, config.paymentPolicy, contact ? [contact] : []);
       if (!limitsResult.accepted) {
         await store.createAuditEvent(accountId, null, "MANDATE_REJECTED", { code: limitsResult.code });
@@ -132,9 +134,10 @@ export function createMandateRouter(config: MandateConfig): Router {
       const issuedAt = new Date();
       const expiresAt = new Date(issuedAt.getTime() + config.mandateTtlSeconds * 1000);
       mandateId = randomUUID();
+      const payeeDisplayName = contact?.displayName ?? input.proposal.payeeName!;
       const spokenText = buildReadout({
         proposal: input.proposal,
-        payeeDisplayName: contact!.displayName,
+        payeeDisplayName,
         requestConstraints: input.requestConstraints,
       });
       const mandate = buildMandate({
@@ -153,7 +156,9 @@ export function createMandateRouter(config: MandateConfig): Router {
         id: mandate.id,
         account_id: mandate.accountId,
         action: mandate.action,
-        payee_contact_id: mandate.payeeContactId,
+        payee_contact_id: mandate.payeeContactId ?? null,
+        ...(mandate.payeeName ? { payee_name: mandate.payeeName } : {}),
+        ...(mandate.payeeAccountNumber ? { payee_account_number: mandate.payeeAccountNumber } : {}),
         amount_minor: mandate.amountMinor,
         currency: mandate.currency,
         constraints: mandate.constraints,

@@ -39,6 +39,19 @@ describe("mandate canonicalization and hashing", () => {
 
   it("changes the hash when a consented field changes", () => {
     expect(hashMandate({ ...mandate, amountMinor: 5001 })).not.toBe(hashMandate(mandate));
+    const accountMandate = buildMandate({
+      ...mandate,
+      payeeContactId: undefined,
+      payeeName: "Ade Bello",
+      payeeAccountNumber: "0123456789",
+    });
+    const tamperedDigitMandate = buildMandate({
+      ...mandate,
+      payeeContactId: undefined,
+      payeeName: "Ade Bello",
+      payeeAccountNumber: "0123456780",
+    });
+    expect(hashMandate(accountMandate)).not.toBe(hashMandate(tamperedDigitMandate));
   });
 
   it("rejects malformed or expired mandates before hashing", () => {

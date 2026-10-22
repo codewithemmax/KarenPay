@@ -35,7 +35,7 @@ karenpay/
 
 **contacts**: id, account_id, display_name, paypal_sandbox_email, created_at. Maximum 5 per account.
 
-**mandates**: id, account_id, action (`send_money`), payee_contact_id, amount_minor (positive integer), currency, constraints (jsonb), request_hash, nonce, issued_at, expires_at, spoken_text, mandate_hash, state, paypal_ref, created_at, updated_at.
+**mandates**: id, account_id, action (`send_money`), payee_contact_id (nullable), payee_name (nullable), payee_account_number (nullable), amount_minor (positive integer), currency, constraints (jsonb), request_hash, nonce, issued_at, expires_at, spoken_text, mandate_hash, state, paypal_ref, created_at, updated_at.
 
 **audit_events**: id, mandate_id (nullable), account_id, event_type, detail (jsonb), prev_hash, hash, created_at. The hash chains each row to the previous one.
 
@@ -60,7 +60,7 @@ karenpay/
 * The approval assertion is separate from the login assertion. Its challenge is the mandate hash.
 
 ## AI Model
-Gemini is called only by `POST /api/v1/intent`. It receives the transcript and the caller's contact names. It never receives secrets, PayPal data or account IDs. Its output is parsed with a strict zod schema and then passed through the intent check and limits. It can never approve, never choose a recipient outside the contact list, and never set the final amount.
+Gemini is called only by `POST /api/v1/intent`. It receives the transcript and the caller's contact names. It never receives secrets, PayPal data or account IDs. Its output is parsed with a strict zod schema and then passed through the intent check and limits. It can never approve, never choose a contact outside the caller's contact list unless the person explicitly spoke the recipient name and digit-by-digit account number, and never set the final amount.
 
 ## Invariants (Hard Rules)
 1. Challenge equals base64url(SHA-256(RFC 8785 canonical mandate)).
@@ -69,7 +69,7 @@ Gemini is called only by `POST /api/v1/intent`. It receives the transcript and t
 4. Expiry is 120 seconds, checked with the database clock.
 5. Single use is enforced by the atomic state transition, never by application memory.
 6. Amount is a positive integer in minor units, below the policy maximum. Currency is on the whitelist.
-7. Recipient must be one of the caller's contacts.
+7. Recipient must either be one of the caller's contacts or have both a recipient name and a 6-to-20 digit account number spoken digit-by-digit by the caller.
 8. PayPal Payouts calls use the mandate id as `sender_batch_id`.
 9. Credentials and secrets never reach the browser, Gemini, logs or Git.
 10. Every outcome writes an audit event, including every rejection and its reason.

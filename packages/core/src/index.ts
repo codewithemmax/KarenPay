@@ -8,12 +8,16 @@ export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
   z.string(), z.number().finite(), z.boolean(), z.null(), z.array(JsonValueSchema), z.record(JsonValueSchema),
 ]));
 
+export const AccountNumberSchema = z.string().regex(/^[0-9]{6,20}$/);
+
 /** Immutable consented payment data. Mutable execution state is not hashed. */
 export const MandateSchema = z.object({
   id: z.string().uuid(),
   accountId: z.string().uuid(),
   action: z.literal("send_money"),
-  payeeContactId: z.string().uuid(),
+  payeeContactId: z.string().uuid().nullable().optional(),
+  payeeName: z.string().trim().min(1).max(100).nullable().optional(),
+  payeeAccountNumber: AccountNumberSchema.nullable().optional(),
   amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   currency: z.string().regex(/^[A-Z]{3}$/),
   constraints: z.record(JsonValueSchema),
@@ -23,6 +27,9 @@ export const MandateSchema = z.object({
   expiresAt: z.string().datetime({ offset: true }),
   spokenText: z.string().min(1),
 }).strict().refine(
+  (mandate) => Boolean(mandate.payeeContactId) || Boolean(mandate.payeeName && mandate.payeeAccountNumber),
+  { message: "Either payeeContactId or payeeName with payeeAccountNumber is required", path: ["payeeContactId"] },
+).refine(
   (mandate) => Date.parse(mandate.expiresAt) > Date.parse(mandate.issuedAt),
   { message: "expiresAt must be after issuedAt", path: ["expiresAt"] },
 );
@@ -49,19 +56,29 @@ export function hashMandate(mandate: Mandate): string {
 
 export const PaymentProposalSchema = z.object({
   action: z.literal("send_money"),
-  payeeContactId: z.string().uuid(),
+  payeeContactId: z.string().uuid().nullable().optional(),
+  payeeName: z.string().trim().min(1).max(100).nullable().optional(),
+  payeeAccountNumber: AccountNumberSchema.nullable().optional(),
   amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   currency: z.string().regex(/^[A-Z]{3}$/),
-}).strict();
+}).strict().refine(
+  (proposal) => Boolean(proposal.payeeContactId) || Boolean(proposal.payeeName && proposal.payeeAccountNumber),
+  { message: "Either payeeContactId or payeeName with payeeAccountNumber is required", path: ["payeeContactId"] },
+);
 
 export type PaymentProposal = z.infer<typeof PaymentProposalSchema>;
 
 export const IntentConstraintsSchema = z.object({
   action: z.literal("send_money"),
-  payeeContactId: z.string().uuid(),
+  payeeContactId: z.string().uuid().nullable().optional(),
+  payeeName: z.string().trim().min(1).max(100).nullable().optional(),
+  payeeAccountNumber: AccountNumberSchema.nullable().optional(),
   maximumAmountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   currency: z.string().regex(/^[A-Z]{3}$/),
-}).strict();
+}).strict().refine(
+  (constraints) => Boolean(constraints.payeeContactId) || Boolean(constraints.payeeName && constraints.payeeAccountNumber),
+  { message: "Either payeeContactId or payeeName with payeeAccountNumber is required", path: ["payeeContactId"] },
+);
 
 export type IntentConstraints = z.infer<typeof IntentConstraintsSchema>;
 
@@ -74,7 +91,20 @@ export function checkIntent(proposal: PaymentProposal, constraints: IntentConstr
   if (proposal.action !== constraints.action) {
     return { accepted: false, code: "ACTION_MISMATCH" };
   }
-  if (proposal.payeeContactId !== constraints.payeeContactId) {
+  const proposalContactId = proposal.payeeContactId ?? null;
+  const constraintContactId = constraints.payeeContactId ?? null;
+  const proposalAccount = proposal.payeeAccountNumber ?? null;
+  const constraintAccount = constraints.payeeAccountNumber ?? null;
+  if (proposalContactId !== constraintContactId || proposalAccount !== constraintAccount) {
+    return { accepted: false, code: "RECIPIENT_MISMATCH" };
+  }
+  if (proposalAccount !== null) {
+    const proposalName = (proposal.payeeName ?? "").trim().toLowerCase();
+    const constraintName = (constraints.payeeName ?? "").trim().toLowerCase();
+    if (!proposalName || proposalName !== constraintName) {
+      return { accepted: false, code: "RECIPIENT_MISMATCH" };
+    }
+  } else if (proposalContactId === null) {
     return { accepted: false, code: "RECIPIENT_MISMATCH" };
   }
   if (proposal.amountMinor > constraints.maximumAmountMinor) {
@@ -120,7 +150,20 @@ export function checkLimits(
   if (!policy.allowedCurrencies.includes(proposal.currency)) {
     return { accepted: false, code: "CURRENCY_NOT_ALLOWED" };
   }
-  if (!contacts.some((contact) => contact.id === proposal.payeeContactId)) {
+  if (proposal.payeeContactId) {
+    if (!contacts.some((contact) => contact.id === proposal.payeeContactId)) {
+      return { accepted: false, code: "RECIPIENT_NOT_FOUND" };
+    }
+    if (proposal.payeeAccountNumber && !AccountNumberSchema.safeParse(proposal.payeeAccountNumber).success) {
+      return { accepted: false, code: "RECIPIENT_NOT_FOUND" };
+    }
+    return { accepted: true };
+  }
+  if (
+    !proposal.payeeName?.trim() ||
+    !proposal.payeeAccountNumber ||
+    !AccountNumberSchema.safeParse(proposal.payeeAccountNumber).success
+  ) {
     return { accepted: false, code: "RECIPIENT_NOT_FOUND" };
   }
   return { accepted: true };
@@ -128,22 +171,29 @@ export function checkLimits(
 
 export interface ReadoutInput {
   proposal: PaymentProposal;
-  payeeDisplayName: string;
+  payeeDisplayName?: string;
   requestConstraints?: IntentConstraints;
 }
 
 /** Builds the exact, deterministic text that must be read before approval. */
 export function buildReadout(input: ReadoutInput): string {
-  const name = input.payeeDisplayName.trim();
+  const name = (input.payeeDisplayName ?? input.proposal.payeeName ?? "").trim();
   if (!name) {
     throw new Error("payeeDisplayName is required");
+  }
+  let recipientPhrase = name;
+  if (input.proposal.payeeAccountNumber) {
+    if (!AccountNumberSchema.safeParse(input.proposal.payeeAccountNumber).success) {
+      throw new Error("payeeAccountNumber must be 6 to 20 digits");
+    }
+    recipientPhrase = `${name}, account number ${digitsToWords(input.proposal.payeeAccountNumber)}`;
   }
   const amount = formatAmount(input.proposal.amountMinor, input.proposal.currency);
   const digits = formatDigits(input.proposal.amountMinor, input.proposal.currency);
   const comparison = input.requestConstraints
     ? ` You asked for under ${formatAmount(input.requestConstraints.maximumAmountMinor, input.requestConstraints.currency)}.`
     : "";
-  return `You asked to send ${amount} to ${name}. That is ${digits}.${comparison} This is a sandbox test payment. To approve, use your fingerprint or face now.`;
+  return `You asked to send ${amount} to ${recipientPhrase}. That is ${digits}.${comparison} This is a sandbox test payment. To approve, use your fingerprint or face now.`;
 }
 
 function formatAmount(amountMinor: number, currency: string): string {

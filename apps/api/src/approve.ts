@@ -12,7 +12,9 @@ type MandateRow = {
   id: string;
   state: "CREATED" | "CONSUMED" | "PAID" | "FAILED" | "REJECTED" | "EXPIRED";
   mandate_hash: string;
-  payee_contact_id: string;
+  payee_contact_id: string | null;
+  payee_name?: string | null;
+  payee_account_number?: string | null;
   amount_minor: number;
   currency: string;
   paypal_ref: string | null;
@@ -55,7 +57,7 @@ class SupabaseApprovalStore {
 
   async getMandate(accountId: string, mandateId: string): Promise<MandateRow | undefined> {
     const rows = await this.request<MandateRow[]>(
-      `mandates?select=id,state,mandate_hash,payee_contact_id,amount_minor,currency,paypal_ref,spoken_text&id=eq.${encodeURIComponent(mandateId)}&account_id=eq.${encodeURIComponent(accountId)}`,
+      `mandates?select=id,state,mandate_hash,payee_contact_id,payee_name,payee_account_number,amount_minor,currency,paypal_ref,spoken_text&id=eq.${encodeURIComponent(mandateId)}&account_id=eq.${encodeURIComponent(accountId)}`,
     );
     return rows[0];
   }
@@ -171,7 +173,11 @@ export function createApproveRouter(config: ApproveConfig): Router {
         return latest ? sendStoredOutcome(response, latest) : response.status(404).json({ code: "MANDATE_NOT_FOUND", message: "This test payment was not found." });
       }
 
-      const recipient = await store.getContactEmail(accountId, consumed.payee_contact_id);
+      const recipient = consumed.payee_contact_id
+        ? await store.getContactEmail(accountId, consumed.payee_contact_id)
+        : consumed.payee_account_number
+          ? `acct-${consumed.payee_account_number}@sandbox.karenpay.test`
+          : undefined;
       if (!recipient) throw new Error("Mandate recipient no longer exists");
       await store.audit(accountId, mandateId, "MANDATE_CONSUMED", {});
       try {
