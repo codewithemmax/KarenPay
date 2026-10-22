@@ -14,11 +14,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Readonly<Record<ButtonVariant, string>> = {
   primary:
-    "min-h-[64px] w-full rounded-full bg-primary px-6 py-4 text-[19px] font-bold text-white shadow-card hover:bg-primary-strong disabled:bg-surface-tint disabled:text-text-muted",
+    "min-h-[64px] w-full rounded-full bg-primary px-6 py-4 text-[19px] font-bold text-text shadow-card hover:bg-sun disabled:bg-surface-tint disabled:text-text-muted",
   secondary:
-    "min-h-[48px] w-full rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-text hover:bg-divider disabled:bg-surface-tint disabled:text-text-muted",
+    "min-h-[48px] w-full rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-ink hover:bg-peach disabled:bg-surface-tint disabled:text-text-muted",
   ghost:
-    "min-h-[48px] rounded-full px-4 py-2.5 text-base font-semibold text-primary-strong hover:bg-surface-tint disabled:text-text-muted",
+    "min-h-[48px] rounded-full px-4 py-2.5 text-base font-semibold text-ink hover:bg-surface-tint disabled:text-text-muted",
 };
 
 export function Button({

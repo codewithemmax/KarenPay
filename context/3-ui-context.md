@@ -49,7 +49,7 @@ Rules:
 Open the four screenshots in `context/karenpay-ui-prompts/images` (`current-1-ledger.png`, `current-2-audit.png`, `current-3-signin.png`, `current-4-terminal.png`). That is the old design. The new UI must look clearly different from it: no outline on every element, no all-caps labels, no flat red rectangles, no jargon such as telemetry or state labels. Do not reuse its layout patterns.
 
 ### Product Feel
-KarenPay is a modern mobile wallet for everyone, including blind and low-vision users. The look is a calm, friendly consumer fintech app in the style of OPay, Moniepoint and Kuda: soft rounded cards, a prominent balance, quick-action icons, a bottom tab bar. Original branding only. Do not copy any brand's logo or exact colours. Never use brutalist boxes, thick 2px borders, all-caps headings or monospace body text.
+KarenPay is a modern mobile wallet for everyone, including blind and low-vision users. The look is a calm, friendly consumer fintech app with one warm sunset palette: soft rounded cards, a prominent balance, quick-action icons, a bottom tab bar. Original branding only. Do not copy any brand's logo or exact colours, and never write the words "Face ID". Never use brutalist boxes, thick 2px borders, all-caps headings or monospace body text.
 
 ### Stack
 Next.js App Router, TypeScript, Tailwind CSS, `lucide-react` for icons, `Inter` via `next/font`, `@simplewebauthn/browser`. No other UI libraries.
@@ -60,25 +60,32 @@ Next.js App Router, TypeScript, Tailwind CSS, `lucide-react` for icons, `Inter` 
 * 8px spacing grid. Page side padding 20px.
 * Reflow without horizontal scroll at 320px width and at 400 percent zoom.
 
-### Colour Tokens (all contrast measured)
-* `--bg` `#F4F7F6`
+### Colour Tokens — One Warm Sunset Palette (all contrast measured)
+There is no green, teal, mint, or emerald token.
+* `--bg` `#FFF8F1`
 * `--surface` `#FFFFFF`
-* `--surface-tint` `#E6F4F1`
-* `--text` `#0B1F1A` (17.1:1 on white)
-* `--text-muted` `#3F5550` (8.0:1 on white, 7.4:1 on bg)
-* `--primary` `#0F766E` (white text on it is 5.5:1, use for filled buttons)
-* `--primary-strong` `#115E59` (7.6:1 on white, use for coloured text and links)
-* `--balance-card` `#064E3B` (white text 9.7:1, mint `#A7F3D0` text 7.6:1)
-* `--danger` `#B42318` (6.6:1) and `--danger-strong` `#912018` (8.7:1)
-* `--success` `#067647` (5.7:1) and `--success-strong` `#085D3A` (8.0:1)
-* `--warning-bg` `#FEF0C7` with text `#7A2E0E` (8.3:1)
-* `--input-border` `#5B6F69` (5.4:1 on white, meets the 3:1 non-text rule)
-* `--divider` `#D5DFDC` (decorative only, never the only way to see a boundary)
+* `--surface-tint` `#FFE9D2`
+* `--text` `#1F1B35` (16.6:1 on white, 15.8:1 on bg, 14.1:1 on tint)
+* `--text-muted` `#48426D` (9.2:1 on white, 8.8:1 on bg, 7.8:1 on tint). Also use it for "Coming soon" labels.
+* `--primary` `#FF9F31` (fill of primary buttons, ALWAYS with `--text` label at 8.1:1; never white text on orange)
+* `--sun` `#FFCC6B` (highlights, progress fill, avatars with `--text` at 11.1:1)
+* `--peach` `#F0C38E` (avatars with `--text` at 10.2:1, and caption text on the balance card at 8.0:1)
+* `--coral` `#F1AA9B` (avatars and decoration only, with `--text` at 8.7:1; never as text colour)
+* `--ink` `#312C51` (links, icons, and coloured text on light surfaces: 13.1:1 on white, 12.4:1 on bg, 11.1:1 on tint)
+* `--balance-card` `#312C51` (white text 13.1:1, peach `#F0C38E` 8.0:1, sun `#FFCC6B` 8.8:1)
+* `--danger` `#9F1239` (text on `--bg` at 7.6:1 or `--surface` white at 8.0:1 only; never on `--surface-tint` at 6.8:1)
+* `--warning-bg` `#FFE8B3` with text `--warning-text` `#5A2300` (10.4:1)
+* `--input-border` `#6B6590` (5.4:1 on white, 5.1:1 on bg, meets the 3:1 non-text rule)
+* `--divider` `#EBDDD0` (decoration only, never the only way to see a boundary)
 
-Never put text on a colour pair that is not listed here. No gradients behind text. Light theme only for now.
+Rules:
+* No text on any pair not listed here. No gradients behind text. Light theme only.
+* Status chips are icon plus the approved status words, in `--ink` text on `--surface-tint`, never colour alone.
+* The orange button edge is 1.95:1 against `--bg`, so its identity comes from its label, its 64px height, and its position. Do not add a border.
+* Optional decorative sunset: flat solid shapes only (a `--sun` and `--primary` half-circle over `--ink` hills), `aria-hidden="true"`, no text on top, max 160px tall.
 
 ### Shape and Type
-* Radius: cards 20px, inputs 14px, buttons and chips fully rounded (pill). Shadows soft: `0 1px 2px rgba(11,31,26,.06), 0 8px 24px rgba(11,31,26,.06)`.
+* Radius: cards 20px, inputs 14px, buttons and chips fully rounded (pill). Shadows soft: `0 1px 2px rgba(31,27,53,.06), 0 8px 24px rgba(31,27,53,.06)`.
 * Inter. Body 16px minimum, captions 14px minimum, never smaller. Page title 28px bold, section title 20px semibold, balance 40px bold.
 * All money, account numbers, references and timers use the class `.num`: `font-variant-numeric: tabular-nums slashed-zero; letter-spacing: 0.02em;`. Money columns are right aligned so the digits line up.
 * Money format: `$2,450.00`. Show the minus sign for debits.
@@ -89,7 +96,7 @@ Use `lucide-react`. Every icon that sits next to visible text is decorative: `ar
 ### Targets and Focus
 * Primary call-to-action buttons: height at least 64px, full width, pill shape.
 * Every other interactive element: at least 48px by 48px, with at least 8px between neighbours.
-* Visible focus ring on everything: `3px solid #0B1F1A` with `2px` offset, and `3px solid white` on dark surfaces. Never remove outlines.
+* Visible focus ring on everything: `3px solid #1F1B35` with `2px` offset on light surfaces, and `3px solid #FFFFFF` on `--balance-card`. Never remove outlines.
 * Respect `prefers-reduced-motion`: no count-up animations, no sliding, no pulsing.
 
 ### Semantics

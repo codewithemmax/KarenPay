@@ -8,6 +8,7 @@ import { BottomTabBar } from "../../components/BottomTabBar";
 import { Button } from "../../components/Button";
 import {
   DEMO_CONTACTS,
+  getAvatarBgClass,
   getInitials,
   withMaskedHint,
   type ContactItem,
@@ -54,7 +55,6 @@ export default function ContactsPage() {
         }
       }
 
-      // Standalone UI preview fallback when upstream backend is not running
       setContacts(DEMO_CONTACTS);
     } catch {
       setContacts(DEMO_CONTACTS);
@@ -73,7 +73,7 @@ export default function ContactsPage() {
         <Link
           href="/home"
           aria-label="Back to home"
-          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
+          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-surface text-ink shadow-card transition-colors hover:bg-surface-tint"
         >
           <ArrowLeft aria-hidden="true" className="h-5 w-5" />
         </Link>
@@ -99,15 +99,14 @@ export default function ContactsPage() {
           </section>
         )}
 
-        <section
-          aria-label="Saved contacts"
-          className="rounded-card bg-surface p-5 shadow-card"
-        >
+        <section aria-label="Saved contacts">
           {loading ? (
-            <p className="text-base text-text-muted">Loading contacts…</p>
+            <div className="rounded-card bg-surface p-5 shadow-card">
+              <p className="text-base text-text-muted">Loading contacts…</p>
+            </div>
           ) : contacts.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-primary-strong">
+            <div className="flex flex-col items-center gap-2 rounded-card bg-surface p-6 text-center shadow-card">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink">
                 <Users aria-hidden="true" className="h-6 w-6" />
               </div>
               <p className="text-base font-medium text-text">
@@ -118,16 +117,16 @@ export default function ContactsPage() {
               </p>
             </div>
           ) : (
-            <ul className="flex flex-col divide-y divide-divider">
-              {contacts.slice(0, 5).map((contact) => (
+            <ul className="flex flex-col gap-3">
+              {contacts.slice(0, 5).map((contact, idx) => (
                 <li
                   key={contact.id}
-                  className="flex items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0"
+                  className="flex items-center justify-between gap-3 rounded-card bg-surface p-4 shadow-card"
                 >
                   <div className="flex min-w-0 items-center gap-3.5">
                     <span
                       aria-hidden="true"
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-tint text-base font-bold text-text"
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-bold text-text ${getAvatarBgClass(idx)}`}
                     >
                       {getInitials(contact.displayName)}
                     </span>
@@ -143,10 +142,6 @@ export default function ContactsPage() {
                       </p>
                     </div>
                   </div>
-
-                  <span className="rounded-full bg-surface-tint px-3 py-1 text-sm font-medium text-text">
-                    Saved
-                  </span>
                 </li>
               ))}
             </ul>
@@ -158,11 +153,13 @@ export default function ContactsPage() {
           disabled
           aria-disabled="true"
           tabIndex={-1}
-          className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-text-muted"
+          className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-ink"
         >
           <UserPlus aria-hidden="true" className="h-5 w-5" />
           <span>Add contact</span>
-          <span className="text-sm font-normal">· Coming soon</span>
+          <span className="text-sm font-normal text-text-muted">
+            · Coming soon
+          </span>
         </button>
       </main>
 

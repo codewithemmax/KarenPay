@@ -7,6 +7,7 @@ export interface ContactItem {
 
 export interface ActivityPreviewRow {
   id: string;
+  recipientName: string;
   title: string;
   reference: string;
   dateLabel: string;
@@ -64,7 +65,8 @@ export const DEMO_CONTACTS: readonly ContactItem[] = [
 export const DEMO_ACTIVITY_ROWS: readonly ActivityPreviewRow[] = [
   {
     id: "demo-act-1",
-    title: "Test payment to Ade Bello",
+    recipientName: "Ade Bello",
+    title: "To Ade Bello",
     reference: "Ref KP-2048 · Sandbox demo",
     dateLabel: "Today, 2:10 PM",
     amountFormatted: "-$50.00",
@@ -73,7 +75,8 @@ export const DEMO_ACTIVITY_ROWS: readonly ActivityPreviewRow[] = [
   },
   {
     id: "demo-act-2",
-    title: "Test payment to Chidi Okonkwo",
+    recipientName: "Chidi Okonkwo",
+    title: "To Chidi Okonkwo",
     reference: "Ref KP-2019 · Sandbox demo",
     dateLabel: "Yesterday, 9:42 AM",
     amountFormatted: "-$25.00",
@@ -82,7 +85,8 @@ export const DEMO_ACTIVITY_ROWS: readonly ActivityPreviewRow[] = [
   },
   {
     id: "demo-act-3",
-    title: "Test payment to Fatima Yusuf",
+    recipientName: "Fatima Yusuf",
+    title: "To Fatima Yusuf",
     reference: "Ref KP-1984 · Sandbox demo",
     dateLabel: "Oct 20, 6:15 PM",
     amountFormatted: "-$15.00",
@@ -90,6 +94,15 @@ export const DEMO_ACTIVITY_ROWS: readonly ActivityPreviewRow[] = [
     isDemoPlaceholder: true,
   },
 ] as const;
+
+const AVATAR_BG_CLASSES = ["bg-sun", "bg-peach", "bg-coral"] as const;
+
+/**
+ * Cycles avatar background across --sun, --peach, and --coral (all paired with --text).
+ */
+export function getAvatarBgClass(index: number): string {
+  return AVATAR_BG_CLASSES[Math.abs(index) % AVATAR_BG_CLASSES.length];
+}
 
 /**
  * Formats integer minor units into $2,450.00 (or -$50.00 for debits) without float math.

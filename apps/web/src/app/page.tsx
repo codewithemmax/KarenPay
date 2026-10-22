@@ -98,7 +98,10 @@ export default function WelcomeSignInPage() {
   return (
     <div className="flex flex-1 flex-col justify-between gap-6">
       <header className="flex items-center gap-3 pt-2">
-        <div className="flex h-12 w-12 items-center justify-center rounded-input bg-surface-tint text-primary-strong">
+        <div
+          aria-hidden="true"
+          className="flex h-12 w-12 items-center justify-center rounded-input bg-ink text-peach"
+        >
           <ShieldCheck aria-hidden="true" className="h-6 w-6" />
         </div>
         <span className="text-[20px] font-semibold text-text">KarenPay</span>
@@ -106,6 +109,34 @@ export default function WelcomeSignInPage() {
 
       <main className="flex flex-1 flex-col justify-center gap-6">
         <section className="rounded-card bg-surface p-6 shadow-card">
+          {/* Decorative flat solid sunset (max 160px tall, aria-hidden, no text on top) */}
+          <div
+            aria-hidden="true"
+            className="mb-5 h-32 max-h-[160px] w-full overflow-hidden rounded-input bg-surface-tint"
+          >
+            <svg
+              aria-hidden="true"
+               focusable="false"
+              viewBox="0 0 400 128"
+              preserveAspectRatio="none"
+              className="h-full w-full"
+            >
+              {/* Outer --sun half-circle */}
+              <circle cx="200" cy="96" r="68" fill="#FFCC6B" />
+              {/* Inner --primary half-circle */}
+              <circle cx="200" cy="96" r="46" fill="#FF9F31" />
+              {/* Flat solid --ink hills */}
+              <path
+                d="M0 98 Q95 72 205 94 T400 84 L400 128 L0 128 Z"
+                fill="#312C51"
+              />
+              <path
+                d="M0 108 Q140 88 260 106 T400 98 L400 128 L0 128 Z"
+                fill="#312C51"
+              />
+            </svg>
+          </div>
+
           <h1 className="text-[28px] font-bold leading-tight text-text">
             Welcome back
           </h1>
@@ -146,7 +177,7 @@ export default function WelcomeSignInPage() {
 
             <Link
               href="/register"
-              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-text transition-colors hover:bg-divider"
+              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-ink transition-colors hover:bg-peach"
             >
               Create an account
             </Link>
@@ -159,7 +190,10 @@ export default function WelcomeSignInPage() {
         >
           <ul className="flex flex-col gap-4">
             <li className="flex items-center gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-primary-strong">
+              <div
+                aria-hidden="true"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-ink"
+              >
                 <Volume2 aria-hidden="true" className="h-5 w-5" />
               </div>
               <span className="text-base text-text">
@@ -168,7 +202,10 @@ export default function WelcomeSignInPage() {
             </li>
 
             <li className="flex items-center gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-primary-strong">
+              <div
+                aria-hidden="true"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-ink"
+              >
                 <Fingerprint aria-hidden="true" className="h-5 w-5" />
               </div>
               <span className="text-base text-text">
@@ -177,7 +214,10 @@ export default function WelcomeSignInPage() {
             </li>
 
             <li className="flex items-center gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-primary-strong">
+              <div
+                aria-hidden="true"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-ink"
+              >
                 <ShieldCheck aria-hidden="true" className="h-5 w-5" />
               </div>
               <span className="text-base text-text">

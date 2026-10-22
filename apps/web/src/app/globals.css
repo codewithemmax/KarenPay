@@ -3,22 +3,22 @@
 @tailwind utilities;
 
 :root {
-  --bg: #F4F7F6;
+  --bg: #FFF8F1;
   --surface: #FFFFFF;
-  --surface-tint: #E6F4F1;
-  --text: #0B1F1A;
-  --text-muted: #3F5550;
-  --primary: #0F766E;
-  --primary-strong: #115E59;
-  --balance-card: #064E3B;
-  --danger: #B42318;
-  --danger-strong: #912018;
-  --success: #067647;
-  --success-strong: #085D3A;
-  --warning-bg: #FEF0C7;
-  --warning-text: #7A2E0E;
-  --input-border: #5B6F69;
-  --divider: #D5DFDC;
+  --surface-tint: #FFE9D2;
+  --text: #1F1B35;
+  --text-muted: #48426D;
+  --primary: #FF9F31;
+  --sun: #FFCC6B;
+  --peach: #F0C38E;
+  --coral: #F1AA9B;
+  --ink: #312C51;
+  --balance-card: #312C51;
+  --danger: #9F1239;
+  --warning-bg: #FFE8B3;
+  --warning-text: #5A2300;
+  --input-border: #6B6590;
+  --divider: #EBDDD0;
 }
 
 @layer base {
@@ -38,7 +38,7 @@
   }
 
   *:focus-visible {
-    outline: 3px solid #0B1F1A;
+    outline: 3px solid #1F1B35;
     outline-offset: 2px;
   }
 

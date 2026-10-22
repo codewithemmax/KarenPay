@@ -1,8 +1,9 @@
 "use client";
 
 import {
-  ArrowUpRight,
   Bell,
+  Check,
+  Clock,
   Eye,
   EyeOff,
   History,
@@ -25,6 +26,7 @@ import {
   DEMO_VOICE_LIMIT_MAX_MINOR,
   DEMO_VOICE_LIMIT_USED_MINOR,
   formatMoneyMinor,
+  getAvatarBgClass,
   getFirstName,
   getInitials,
   getTimeOfDayGreeting,
@@ -52,6 +54,10 @@ function mapAuditEventToPreviewRow(event: AuditEventApiRow): ActivityPreviewRow 
     event.detail && typeof event.detail.amountMinor === "number"
       ? event.detail.amountMinor
       : 5000;
+  const recipientFromDetail =
+    event.detail && typeof event.detail.payeeName === "string"
+      ? event.detail.payeeName
+      : "Ade Bello";
   const shortRef = event.hash ? event.hash.slice(0, 8) : event.id.slice(0, 8);
   const dateObj = new Date(event.createdAt);
   const dateLabel = Number.isNaN(dateObj.getTime())
@@ -64,7 +70,8 @@ function mapAuditEventToPreviewRow(event: AuditEventApiRow): ActivityPreviewRow 
   if (isRejected) {
     return {
       id: event.id,
-      title: "Blocked attempt",
+      recipientName: recipientFromDetail,
+      title: `To ${recipientFromDetail}`,
       reference: `Ref ${shortRef}`,
       dateLabel,
       amountFormatted: "$0.00",
@@ -77,10 +84,8 @@ function mapAuditEventToPreviewRow(event: AuditEventApiRow): ActivityPreviewRow 
 
   return {
     id: event.id,
-    title:
-      event.eventType === "PAYMENT_SENT"
-        ? "Test payment sent"
-        : "Test payment prepared",
+    recipientName: recipientFromDetail,
+    title: `To ${recipientFromDetail}`,
     reference: `Ref ${shortRef}`,
     dateLabel,
     amountFormatted: formatMoneyMinor(detailAmount, { debit: true }),
@@ -140,7 +145,6 @@ export default function HomePage() {
           );
         }
       } else {
-        // Standalone preview fallback when upstream backend is not running
         setContacts(DEMO_CONTACTS);
       }
 
@@ -169,7 +173,6 @@ export default function HomePage() {
         setActivityRows(DEMO_ACTIVITY_ROWS);
       }
     } catch {
-      // Keep demo fallback when running standalone UI server
       setContacts(DEMO_CONTACTS);
       setActivityRows(DEMO_ACTIVITY_ROWS);
     } finally {
@@ -227,7 +230,7 @@ export default function HomePage() {
         <div className="flex min-w-0 items-center gap-3">
           <div
             aria-hidden="true"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-tint text-base font-bold text-text"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sun text-base font-bold text-text"
           >
             {holderInitials}
           </div>
@@ -236,7 +239,7 @@ export default function HomePage() {
               <h1 className="truncate text-base font-semibold text-text">
                 {greeting}, {firstName}
               </h1>
-              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
+              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
                 Sandbox
               </span>
             </div>
@@ -249,7 +252,7 @@ export default function HomePage() {
           onClick={() =>
             announceStatus("No new notifications in this sandbox demo.")
           }
-          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-full bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
+          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-full bg-surface text-ink shadow-card transition-colors hover:bg-surface-tint"
         >
           <Bell aria-hidden="true" className="h-5 w-5" />
         </button>
@@ -276,7 +279,7 @@ export default function HomePage() {
           className="on-dark rounded-card bg-balance-card p-6 text-white shadow-card"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-base font-medium text-[#A7F3D0]">
+            <span className="text-base font-medium text-peach">
               Available balance
             </span>
             <button
@@ -284,7 +287,7 @@ export default function HomePage() {
               aria-pressed={balanceHidden}
               aria-label={balanceHidden ? "Show balance" : "Hide balance"}
               onClick={handleToggleBalance}
-              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full text-white transition-colors hover:bg-text-muted"
             >
               {balanceHidden ? (
                 <Eye aria-hidden="true" className="h-5 w-5" />
@@ -308,7 +311,7 @@ export default function HomePage() {
                 {formattedBalance}
               </p>
             )}
-            <p className="mt-1 text-sm text-[#A7F3D0]">
+            <p className="mt-1 text-sm text-peach">
               Sandbox demo balance. No real money.
             </p>
           </div>
@@ -319,26 +322,28 @@ export default function HomePage() {
               disabled
               aria-disabled="true"
               tabIndex={-1}
-              className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-1.5 rounded-full border border-[#A7F3D0]/40 px-4 py-2.5 text-sm font-semibold text-[#A7F3D0]"
+              className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-1.5 rounded-full bg-surface-tint px-4 py-2.5 text-sm font-semibold text-ink"
             >
               <span>Add money</span>
-              <span className="text-sm font-normal">· Coming soon</span>
+              <span className="text-sm font-normal text-text-muted">
+                · Coming soon
+              </span>
             </button>
 
             <Link
               href="/activity"
-              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-surface px-4 py-2.5 text-center text-sm font-semibold text-text transition-colors hover:bg-surface-tint"
+              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-surface px-4 py-2.5 text-center text-sm font-semibold text-ink transition-colors hover:bg-surface-tint"
             >
               Transaction history
             </Link>
           </div>
 
           <div className="mt-5">
-            <div className="flex items-center justify-between gap-2 text-sm text-[#A7F3D0]">
+            <div className="flex items-center justify-between gap-2 text-sm text-peach">
               <span id="voice-limit-label" className="num">
                 Voice limit today {formattedUsed} of {formattedMax}
               </span>
-              <span className="rounded-full border border-white/40 px-2.5 py-0.5 text-sm font-medium text-white">
+              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
                 Demo
               </span>
             </div>
@@ -348,10 +353,10 @@ export default function HomePage() {
               aria-valuenow={usedDollars}
               aria-valuemin={0}
               aria-valuemax={maxDollars}
-              className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-white/20"
+              className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-text-muted"
             >
               <div
-                className="h-full rounded-full bg-[#A7F3D0]"
+                className="h-full rounded-full bg-sun"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -370,7 +375,7 @@ export default function HomePage() {
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-text"
               >
                 <Mic aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -383,7 +388,7 @@ export default function HomePage() {
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-primary-strong"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
               >
                 <Users aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -396,7 +401,7 @@ export default function HomePage() {
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-primary-strong"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
               >
                 <History aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -409,7 +414,7 @@ export default function HomePage() {
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-primary-strong"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
               >
                 <ShieldCheck aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -435,7 +440,7 @@ export default function HomePage() {
             </p>
           ) : (
             <div className="mt-3 flex items-center gap-3 overflow-x-auto pb-1">
-              {contacts.map((contact) => (
+              {contacts.map((contact, idx) => (
                 <Link
                   key={contact.id}
                   href="/contacts"
@@ -443,7 +448,7 @@ export default function HomePage() {
                 >
                   <span
                     aria-hidden="true"
-                    className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-tint text-sm font-bold text-text"
+                    className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-text ${getAvatarBgClass(idx)}`}
                   >
                     {getInitials(contact.displayName)}
                   </span>
@@ -467,7 +472,7 @@ export default function HomePage() {
             </h2>
             <Link
               href="/activity"
-              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full px-3 text-sm font-semibold text-primary-strong transition-colors hover:bg-surface-tint"
+              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-tint"
             >
               See all
             </Link>
@@ -480,31 +485,20 @@ export default function HomePage() {
               </p>
             ) : (
               <ul className="flex flex-col divide-y divide-divider">
-                {activityRows.map((item) => (
+                {activityRows.map((item, idx) => (
                   <li
                     key={item.id}
-                    className="flex items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0"
+                    className="flex items-start justify-between gap-3 py-4 first:pt-0 last:pb-0"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <span
                         aria-hidden="true"
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                          item.isBlocked
-                            ? "bg-warning-bg text-warning-text"
-                            : "bg-surface-tint text-primary-strong"
-                        }`}
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-text ${getAvatarBgClass(idx)}`}
                       >
-                        {item.isBlocked ? (
-                          <ShieldAlert aria-hidden="true" className="h-5 w-5" />
-                        ) : (
-                          <ArrowUpRight
-                            aria-hidden="true"
-                            className="h-5 w-5"
-                          />
-                        )}
+                        {getInitials(item.recipientName)}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-base font-medium text-text">
+                        <p className="truncate text-base font-semibold text-text">
                           {item.title}
                         </p>
                         <p className="num truncate text-sm text-text-muted">
@@ -513,16 +507,32 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    <div className="shrink-0 text-right">
+                    <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
                       <p
                         data-testid="home-activity-amount"
-                        className="num text-base font-semibold text-text"
+                        className="num text-[20px] font-bold leading-tight text-text"
                       >
                         {item.amountFormatted}
                       </p>
-                      <p className="text-sm text-text-muted">
-                        {item.statusLabel}
-                      </p>
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
+                        {item.isBlocked ? (
+                          <ShieldAlert
+                            aria-hidden="true"
+                            className="h-3.5 w-3.5 shrink-0"
+                          />
+                        ) : item.statusLabel === "Test payment sent" ? (
+                          <Check
+                            aria-hidden="true"
+                            className="h-3.5 w-3.5 shrink-0"
+                          />
+                        ) : (
+                          <Clock
+                            aria-hidden="true"
+                            className="h-3.5 w-3.5 shrink-0"
+                          />
+                        )}
+                        <span>{item.statusLabel}</span>
+                      </span>
                     </div>
                   </li>
                 ))}
@@ -538,7 +548,7 @@ export default function HomePage() {
         >
           <span
             aria-hidden="true"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-primary-strong"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-ink"
           >
             <Mic aria-hidden="true" className="h-5 w-5" />
           </span>

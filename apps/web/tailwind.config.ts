@@ -4,6 +4,7 @@ const config: Config = {
   content: [
     "./src/app/**/*.{ts,tsx}",
     "./src/components/**/*.{ts,tsx}",
+    "./src/lib/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {
@@ -14,12 +15,12 @@ const config: Config = {
         text: "var(--text)",
         "text-muted": "var(--text-muted)",
         primary: "var(--primary)",
-        "primary-strong": "var(--primary-strong)",
+        sun: "var(--sun)",
+        peach: "var(--peach)",
+        coral: "var(--coral)",
+        ink: "var(--ink)",
         "balance-card": "var(--balance-card)",
         danger: "var(--danger)",
-        "danger-strong": "var(--danger-strong)",
-        success: "var(--success)",
-        "success-strong": "var(--success-strong)",
         "warning-bg": "var(--warning-bg)",
         "warning-text": "var(--warning-text)",
         "input-border": "var(--input-border)",
@@ -33,7 +34,7 @@ const config: Config = {
         input: "14px",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(11, 31, 26, 0.06), 0 8px 24px rgba(11, 31, 26, 0.06)",
+        card: "0 1px 2px rgba(31, 27, 53, 0.06), 0 8px 24px rgba(31, 27, 53, 0.06)",
       },
     },
   },
