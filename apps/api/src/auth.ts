@@ -369,8 +369,16 @@ function decodeBytea(value: string): WebAuthnCredential["publicKey"] {
 
 function sendAuthError(response: Response, error: unknown): void {
   if (error instanceof z.ZodError) {
-    response.status(400).json({ error: "Invalid authentication request" });
+    response.status(400).json({
+      code: "INVALID_AUTH_REQUEST",
+      message: "Please provide a valid display name.",
+      spoken: "Please provide a valid display name.",
+    });
     return;
   }
-  response.status(400).json({ error: "Passkey authentication failed" });
+  response.status(400).json({
+    code: "AUTH_FAILED",
+    message: "Passkey authentication failed. Please try again.",
+    spoken: "Passkey authentication failed. Please try again.",
+  });
 }

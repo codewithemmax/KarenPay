@@ -309,3 +309,69 @@ export function transitionMandateState(
   }
   return { accepted: false, state, code: "INVALID_TRANSITION" };
 }
+
+/**
+ * Maps each MandateState to the exact Approved Status Vocabulary defined in 3-ui-context.md.
+ */
+export function describeMandateState(state: MandateState): string {
+  switch (state) {
+    case "CREATED":
+      return "Waiting for your approval";
+    case "CONSUMED":
+      return "Approved and sending";
+    case "PAID":
+      return "Test payment sent";
+    case "FAILED":
+      return "Not sent";
+    case "REJECTED":
+      return "Rejected";
+    case "EXPIRED":
+      return "Expired";
+  }
+}
+
+export interface AuditEventInput {
+  accountId: string;
+  mandateId: string | null;
+  eventType: string;
+  detail: JsonValue;
+  prevHash: string | null;
+}
+
+export interface AuditEventRecord extends AuditEventInput {
+  hash: string;
+}
+
+export type AuditChainVerificationResult =
+  | { valid: true }
+  | { valid: false; brokenAtIndex: number; reason: "PREV_HASH_MISMATCH" | "HASH_MISMATCH" };
+
+/** Computes the deterministic SHA-256 base64url hash for a hash-chained audit event. */
+export function computeAuditHash(event: AuditEventInput): string {
+  const canonical = canonicalizeJson({
+    accountId: event.accountId,
+    mandateId: event.mandateId,
+    eventType: event.eventType,
+    detail: event.detail,
+    prevHash: event.prevHash,
+  });
+  if (canonical === undefined) {
+    throw new Error("Audit event cannot be represented as canonical JSON");
+  }
+  return createHash("sha256").update(canonical, "utf8").digest("base64url");
+}
+
+/** Verifies that each audit event links to the previous event's hash and matches its own hash. */
+export function verifyAuditChain(events: readonly AuditEventRecord[]): AuditChainVerificationResult {
+  for (let index = 0; index < events.length; index += 1) {
+    const current = events[index];
+    const expectedPrevHash = index === 0 ? null : events[index - 1].hash;
+    if (current.prevHash !== expectedPrevHash) {
+      return { valid: false, brokenAtIndex: index, reason: "PREV_HASH_MISMATCH" };
+    }
+    if (computeAuditHash(current) !== current.hash) {
+      return { valid: false, brokenAtIndex: index, reason: "HASH_MISMATCH" };
+    }
+  }
+  return { valid: true };
+}

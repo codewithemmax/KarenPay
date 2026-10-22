@@ -6,11 +6,10 @@ This checklist covers everything to align on with your teammate and gather befor
 
 ## 1. Decisions to Discuss & Lock In with Your Teammate
 
-### 1.1 Hosting Topology, Domain, and Cookie Strategy
-- **Same-origin proxy vs. cross-origin API:**
-  - Currently in [`setSignedCookie`](file:///C:/dev/KarenPay/apps/api/src/auth.ts#L302-L312), cookies (`kp_session` and `kp_auth_ceremony`) use `sameSite: "strict"`, `secure: true`, `httpOnly: true`, and `path: "/api/v1"`.
-  - **Option A (Same-Origin Proxy — Recommended):** Next.js (`apps/web`) proxies `/api/v1/*` rewrites to the Express API on Render (or shares the same origin). `sameSite: "strict"` works out of the box without cross-site cookie issues on mobile browsers (especially iOS Safari).
-  - **Option B (Cross-Origin API):** `apps/web` and `apps/api` live on different domains/subdomains and the browser calls the API directly with `credentials: "include"`. You must agree on exact `WEB_ORIGIN`, `RP_ID`, CORS headers (`Access-Control-Allow-Origin: WEB_ORIGIN`, `Access-Control-Allow-Credentials: true`), and whether `sameSite` needs to be `"lax"` (same registrable domain) or `"none"` (cross-site HTTPS).
+### 1.1 Hosting Topology, Domain, and Cookie Strategy (Decided: Option A — Same-Origin Proxy + Strict CORS)
+- **Same-origin proxy + strict `WEB_ORIGIN` CORS (Implemented):**
+  - Cookies (`kp_session` and `kp_auth_ceremony`) in [`setSignedCookie`](file:///C:/dev/KarenPay/apps/api/src/auth.ts#L302-L312) use `sameSite: "strict"`, `secure: true`, `httpOnly: true`, and `path: "/api/v1"`.
+  - **Option A (Selected):** Next.js (`apps/web`) proxies `/api/v1/*` rewrites to the Express API on Render (see [apps/web/README.md](file:///C:/dev/KarenPay/apps/web/README.md)), and [`createClientCorsMiddleware`](file:///C:/dev/KarenPay/apps/api/src/index.ts#L37-L64) enforces `WEB_ORIGIN` CORS with credentials and rejects untrusted preflight origins (`403 ORIGIN_NOT_ALLOWED`).
 - **Final Hosted Domain & `RP_ID` ([6-progress-tracker.md](file:///C:/dev/KarenPay/context/6-progress-tracker.md#L40-L43)):**
   - Passkeys permanently bind to `RP_ID`. Lock in the final Render domain now so passkeys do not need to be re-registered later.
 
@@ -70,8 +69,8 @@ This checklist covers everything to align on with your teammate and gather befor
 
 ## 2. What You Need to Gather Before Starting Unit 12
 
-- [x] **Apply the Additive Migration in Supabase:**
-  - Run [20261022125000_mandate_spoken_account_number.sql](file:///C:/dev/KarenPay/supabase/migrations/20261022125000_mandate_spoken_account_number.sql) in the Supabase SQL Editor so the `mandates` table accepts `payee_name` and `payee_account_number` with a nullable `payee_contact_id`.
+- [x] **Apply the Additive Migration in Supabase (Completed):**
+  - Applied [20261022125000_mandate_spoken_account_number.sql](file:///C:/dev/KarenPay/supabase/migrations/20261022125000_mandate_spoken_account_number.sql) in the Supabase SQL Editor so the `mandates` table accepts `payee_name` and `payee_account_number` with a nullable `payee_contact_id`.
 - [ ] **Hosted URLs & Environment Values:**
   - `WEB_ORIGIN` (the exact HTTPS URL where the teammate's Next.js app is deployed on Render, plus local dev origin if needed).
   - `RP_ID` (the domain matching `WEB_ORIGIN`).
@@ -81,5 +80,43 @@ This checklist covers everything to align on with your teammate and gather befor
   - Agree on the 5 spoken utterances for the phone test:
     - Sends using **spoken recipient name + digit-by-digit account number** (e.g., *"Send 50 dollars to Ade Bello, account number zero one two three four five six seven eight nine"*).
     - Sends using **saved contacts** in Supabase (including `"Ade Bello"` and `"Ada Bello"` to verify tie clarification).
-- [x] **Client Request Payload Agreement for `POST /api/v1/mandates`:**
-  - Confirm that when `POST /api/v1/intent` returns `{ payeeName, payeeAccountNumber, amountMinor, currency }`, the client passes `payeeName` and `payeeAccountNumber` (or `payeeContactId` for contact sends) in both `proposal` and `requestConstraints`, plus `requestHash`, when calling `POST /api/v1/mandates`.
+- [x] **Client Request Payload Agreement for `POST /api/v1/mandates` (Confirmed):**
+  - When `POST /api/v1/intent` returns `{ payeeName, payeeAccountNumber, amountMinor, currency }`, the client passes `payeeName` and `payeeAccountNumber` (or `payeeContactId` for contact sends) in both `proposal` and `requestConstraints`, plus `requestHash`, when calling `POST /api/v1/mandates`:
+    - **Spoken account-number send payload:**
+      ```json
+      {
+        "proposal": {
+          "action": "send_money",
+          "payeeName": "Ade Bello",
+          "payeeAccountNumber": "0123456789",
+          "amountMinor": 5000,
+          "currency": "USD"
+        },
+        "requestConstraints": {
+          "action": "send_money",
+          "payeeName": "Ade Bello",
+          "payeeAccountNumber": "0123456789",
+          "maximumAmountMinor": 5000,
+          "currency": "USD"
+        },
+        "requestHash": "<sha256-base64url-of-transcript>"
+      }
+      ```
+    - **Saved-contact send payload:**
+      ```json
+      {
+        "proposal": {
+          "action": "send_money",
+          "payeeContactId": "33333333-3333-4333-8333-333333333333",
+          "amountMinor": 5000,
+          "currency": "USD"
+        },
+        "requestConstraints": {
+          "action": "send_money",
+          "payeeContactId": "33333333-3333-4333-8333-333333333333",
+          "maximumAmountMinor": 5000,
+          "currency": "USD"
+        },
+        "requestHash": "<sha256-base64url-of-transcript>"
+      }
+      ```

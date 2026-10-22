@@ -17,6 +17,8 @@ Update this file after every meaningful implementation change.
   OAuth token caching, Payouts, `sender_batch_id` idempotency, and schema
   validation. `send_money` is the only payment action in scope.
 * Unit 11 endpoint (`POST /api/v1/intent`) is implemented, tested, and documented in `docs/KARENPAY_API.md`: it retrieves at most five owned contacts, supports spoken recipient name + digit-by-digit account number (`payeeName` and `payeeAccountNumber`) with full digit-by-digit readout in `buildReadout`, sends only transcript and display names to Gemini structured output, strictly validates the reply, returns clarification for ambiguity, and rate-limits requests per account.
+* Unit 12 backend client integration support is implemented and tested: Option A same-origin rewrite guidance (`apps/web/README.md`), strict `WEB_ORIGIN` CORS middleware (`createClientCorsMiddleware`), `SameSite=Strict` cookies, spoken-safe auth error responses, `GET /api/v1/health`, `GET/POST /api/v1/contacts` (max 5), and `GET /api/v1/mandates/:id` with `describeMandateState` vocabulary. Awaiting the 5-send phone test with the voice client (Gate 4).
+* Units 14, 15, 16, and 17 are implemented and documented in `docs/RESULTS.md`: hash-chained audit events (`computeAuditHash`, `verifyAuditChain`, `GET /api/v1/audit`) and retry safety (Unit 14); Attack Suite A with 1,000 randomized crypto/logic trials and 100 WebAuthn passkey assertion runs (Unit 15); and Attack Suite B with 200 adversarial prompt and contact/account-number injection trials inspired by AP2-WhisperBench graded with and without `checkIntent` (Unit 16).
 
 ## Completed
 * Unit 1: repo scaffold, Apache-2.0, SECURITY.md.

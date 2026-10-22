@@ -77,3 +77,88 @@ sandbox business account. `send_money` is the only payment action in scope.
       ```
     - Incomplete or malformed intent (`422 Unprocessable Entity` with `INTENT_INCOMPLETE` or `INTENT_INVALID` and a spoken-safe `message`).
     - Upstream model failure (`502 Bad Gateway` with `INTENT_UNAVAILABLE` and a spoken-safe `message`).
+
+## Mandate creation endpoint (Unit 8)
+
+- `POST /api/v1/mandates`
+  - **Authentication**: Requires a valid signed `kp_session` cookie (`401 AUTH_REQUIRED`).
+  - **Request body (spoken account number):**
+    ```json
+    {
+      "proposal": {
+        "action": "send_money",
+        "payeeName": "Ade Bello",
+        "payeeAccountNumber": "0123456789",
+        "amountMinor": 5000,
+        "currency": "USD"
+      },
+      "requestConstraints": {
+        "action": "send_money",
+        "payeeName": "Ade Bello",
+        "payeeAccountNumber": "0123456789",
+        "maximumAmountMinor": 5000,
+        "currency": "USD"
+      },
+      "requestHash": "request-hash"
+    }
+    ```
+  - **Request body (saved contact):**
+    ```json
+    {
+      "proposal": {
+        "action": "send_money",
+        "payeeContactId": "33333333-3333-4333-8333-333333333333",
+        "amountMinor": 5000,
+        "currency": "USD"
+      },
+      "requestConstraints": {
+        "action": "send_money",
+        "payeeContactId": "33333333-3333-4333-8333-333333333333",
+        "maximumAmountMinor": 5000,
+        "currency": "USD"
+      },
+      "requestHash": "request-hash"
+    }
+    ```
+  - **Response (`201 Created`):**
+    ```json
+    {
+      "mandateId": "11111111-1111-4111-8111-111111111111",
+      "mandateHash": "<base64url-sha256-of-canonical-mandate>",
+      "spoken": "You asked to send fifty dollars to Ade Bello, account number zero, one, two, three, four, five, six, seven, eight, nine. That is five, zero dollars. You asked for under fifty dollars. This is a sandbox test payment. To approve, use your fingerprint or face now.",
+      "readoutRequired": true,
+      "approvalOptions": {}
+    }
+    ```
+
+## Client integration support (Unit 12)
+
+- **Hosting & Cookie Topology (Option A — Same-Origin Proxy + Strict CORS)**:
+  - Cookies (`kp_session` and `kp_auth_ceremony`) use `HttpOnly; Secure; SameSite=Strict; Path=/api/v1`.
+  - Next.js (`apps/web`) rewrites `/api/v1/:path*` to the Express API (`API_INTERNAL_ORIGIN`), keeping cookies first-party on mobile browsers.
+  - `createClientCorsMiddleware(webOrigin)` sets `Vary: Origin`, allows `Access-Control-Allow-Origin: WEB_ORIGIN` and `Access-Control-Allow-Credentials: true` for matching origins, and rejects untrusted `OPTIONS` preflight origins with `403 ORIGIN_NOT_ALLOWED`.
+- `GET /api/v1/health`:
+  - Returns `{ "status": "ok", "sandbox": true, "spoken": "KarenPay sandbox API is ready." }`.
+- `GET /api/v1/contacts` and `POST /api/v1/contacts`:
+  - Requires a valid signed `kp_session` cookie.
+  - Lists or creates contacts owned by the authenticated account, enforcing a maximum of 5 contacts (`422 CONTACT_LIMIT_REACHED`).
+- `GET /api/v1/mandates/:id`:
+  - Requires a valid signed `kp_session` cookie and validates ownership against `account_id`.
+  - Maps the mandate's `state` using `describeMandateState` to the exact Approved Status Vocabulary in `context/3-ui-context.md`:
+    - `CREATED`: `"Waiting for your approval"` (`readoutRequired: true`)
+    - `CONSUMED`: `"Approved and sending"`
+    - `PAID`: `"Test payment sent"`
+    - `FAILED`: `"Not sent"`
+    - `REJECTED`: `"Rejected"`
+    - `EXPIRED`: `"Expired"`
+
+## Audit log and retry safety (Unit 14)
+
+- `GET /api/v1/audit`
+  - **Authentication**: Requires a valid signed `kp_session` cookie (`401 AUTH_REQUIRED`).
+  - **Behavior**:
+    - Fetches the caller's own rows from `audit_events` ordered by `created_at ASC, id ASC`.
+    - Each row is hash-chained (`prev_hash` -> `hash`) using `computeAuditHash` over RFC 8785 canonical JSON of `{ accountId, mandateId, eventType, detail, prevHash }`.
+    - Verifies the entire chain via `verifyAuditChain` and returns `chainValid: true | false` alongside `events` and a `spoken` summary.
+- **Retry safety on `POST /api/v1/mandates/:id/approve`**:
+  - Repeated approval calls on a `CONSUMED`, `PAID`, or `FAILED` mandate return the stored outcome immediately via `sendStoredOutcome` and never initiate a second PayPal sandbox payout.

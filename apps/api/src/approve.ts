@@ -1,7 +1,8 @@
 import { verifyAuthenticationResponse, type AuthenticationResponseJSON, type WebAuthnCredential } from "@simplewebauthn/server";
-import { createHash, randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
+import type { JsonValue } from "../../../packages/core/src/index.js";
+import { appendAuditEvent } from "./audit.js";
 import { getAuthenticatedAccountId, loadAuthConfig, type AuthConfig } from "./auth.js";
 import { PayPalClient } from "./paypal.js";
 
@@ -98,14 +99,8 @@ class SupabaseApprovalStore {
     });
   }
 
-  async audit(accountId: string, mandateId: string, eventType: string, detail: object): Promise<void> {
-    const hash = createHash("sha256")
-      .update(`${randomUUID()}:${accountId}:${mandateId}:${eventType}:${JSON.stringify(detail)}`)
-      .digest("base64url");
-    await this.request("audit_events", {
-      method: "POST",
-      body: JSON.stringify({ account_id: accountId, mandate_id: mandateId, event_type: eventType, detail, hash }),
-    });
+  async audit(accountId: string, mandateId: string, eventType: string, detail: Record<string, JsonValue>): Promise<void> {
+    await appendAuditEvent(this.config, accountId, mandateId, eventType, detail);
   }
 
   private async request<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
@@ -147,24 +142,44 @@ export function createApproveRouter(config: ApproveConfig): Router {
       if (mandate.state !== "CREATED") return sendStoredOutcome(response, mandate);
 
       const credential = await store.getCredential(accountId, responseCredential.id);
-      if (!credential) return response.status(401).json({ code: "APPROVAL_REJECTED", message: "The approval could not be verified." });
-      const verification = await verifyAuthenticationResponse({
-        response: responseCredential as unknown as AuthenticationResponseJSON,
-        expectedChallenge: mandate.mandate_hash,
-        expectedOrigin: config.webOrigin,
-        expectedRPID: config.rpID,
-        requireUserVerification: true,
-        advancedFIDOConfig: { userVerification: "required" },
-        credential: {
-          id: credential.credential_id,
-          publicKey: decodeBytea(credential.public_key),
-          counter: credential.counter,
-          transports: credential.transports,
-        },
-      });
-      if (!verification.verified || !verification.authenticationInfo.userVerified) {
+      if (!credential) {
+        await store.audit(accountId, mandateId, "APPROVAL_REJECTED", { code: "UNKNOWN_CREDENTIAL" });
+        return response.status(401).json({
+          code: "APPROVAL_REJECTED",
+          message: "The approval could not be verified.",
+          spoken: "The approval could not be verified.",
+        });
+      }
+      let verification: Awaited<ReturnType<typeof verifyAuthenticationResponse>> | undefined;
+      try {
+        verification = await verifyAuthenticationResponse({
+          response: responseCredential as unknown as AuthenticationResponseJSON,
+          expectedChallenge: mandate.mandate_hash,
+          expectedOrigin: config.webOrigin,
+          expectedRPID: config.rpID,
+          requireUserVerification: true,
+          credential: {
+            id: credential.credential_id,
+            publicKey: decodeBytea(credential.public_key),
+            counter: credential.counter,
+            transports: credential.transports,
+          },
+        });
+      } catch {
+        verification = undefined;
+      }
+      if (
+        !verification ||
+        !verification.verified ||
+        !verification.authenticationInfo.userVerified ||
+        !hasUserPresence(responseCredential)
+      ) {
         await store.audit(accountId, mandateId, "APPROVAL_REJECTED", { code: "APPROVAL_REJECTED" });
-        return response.status(401).json({ code: "APPROVAL_REJECTED", message: "The approval could not be verified." });
+        return response.status(401).json({
+          code: "APPROVAL_REJECTED",
+          message: "The approval could not be verified.",
+          spoken: "The approval could not be verified.",
+        });
       }
       await store.updateCredential(credential.id, verification.authenticationInfo.newCounter);
       const consumed = await store.consumeMandate(accountId, mandateId);
@@ -179,7 +194,10 @@ export function createApproveRouter(config: ApproveConfig): Router {
           ? `acct-${consumed.payee_account_number}@sandbox.karenpay.test`
           : undefined;
       if (!recipient) throw new Error("Mandate recipient no longer exists");
-      await store.audit(accountId, mandateId, "MANDATE_CONSUMED", {});
+      await store.audit(accountId, mandateId, "MANDATE_CONSUMED", {
+        deviceType: verification.authenticationInfo.credentialDeviceType,
+        backedUp: verification.authenticationInfo.credentialBackedUp,
+      });
       try {
         const payout = await paypal.sendPayout({
           mandateId,
@@ -221,4 +239,16 @@ function decodeBytea(value: string): WebAuthnCredential["publicKey"] {
 
 function formatPayoutAmount(amountMinor: number): string {
   return `${Math.floor(amountMinor / 100)}.${String(amountMinor % 100).padStart(2, "0")}`;
+}
+
+function hasUserPresence(credentialResponse: Record<string, unknown>): boolean {
+  const response = credentialResponse.response as { authenticatorData?: unknown } | undefined;
+  if (!response || typeof response.authenticatorData !== "string") {
+    return false;
+  }
+  const authData = Buffer.from(response.authenticatorData, "base64url");
+  if (authData.length < 33) {
+    return false;
+  }
+  return (authData[32] & 0x01) === 0x01;
 }
