@@ -62,3 +62,5 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+.playwright-mcp/
+*.tsbuildinfo
