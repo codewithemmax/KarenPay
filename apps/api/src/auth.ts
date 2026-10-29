@@ -44,6 +44,15 @@ type CredentialRow = {
   public_key: string;
   counter: number;
   transports: string[];
+  device_type?: string | null;
+  backed_up?: boolean;
+  created_at?: string;
+};
+
+type AccountRow = {
+  id: string;
+  display_name: string;
+  created_at: string;
 };
 
 export interface AuthConfig {
@@ -111,6 +120,19 @@ class SupabaseAuthStore {
       `passkey_credentials?select=id,account_id,credential_id,public_key,counter,transports&credential_id=eq.${encodeURIComponent(credentialId)}`,
     );
     return rows[0];
+  }
+
+  async getAccount(accountId: string): Promise<AccountRow | undefined> {
+    const rows = await this.request<AccountRow[]>(
+      `accounts?select=id,display_name,created_at&id=eq.${encodeURIComponent(accountId)}`,
+    );
+    return rows[0];
+  }
+
+  async getAccountCredentials(accountId: string): Promise<CredentialRow[]> {
+    return this.request<CredentialRow[]>(
+      `passkey_credentials?select=id,account_id,credential_id,device_type,backed_up,created_at&account_id=eq.${encodeURIComponent(accountId)}&order=created_at.desc`,
+    );
   }
 
   async updateCredential(id: string, counter: number, deviceType: string, backedUp: boolean): Promise<void> {
@@ -272,6 +294,49 @@ export function createAuthRouter(config: AuthConfig): Router {
     }
     clearCookie(response, sessionCookieName);
     return response.status(204).end();
+  });
+
+  router.get("/me", async (request, response) => {
+    const accountId = getAuthenticatedAccountId(request, config.sessionSecret);
+    if (!accountId) {
+      return response.status(401).json({
+        code: "AUTH_REQUIRED",
+        message: "Please sign in to view your account.",
+        spoken: "Please sign in to view your account.",
+      });
+    }
+    try {
+      const [account, credentials] = await Promise.all([
+        store.getAccount(accountId),
+        store.getAccountCredentials(accountId),
+      ]);
+      if (!account) {
+        return response.status(404).json({
+          code: "ACCOUNT_NOT_FOUND",
+          message: "Account not found.",
+          spoken: "Account not found.",
+        });
+      }
+      return response.json({
+        accountId: account.id,
+        displayName: account.display_name,
+        createdAt: account.created_at,
+        rpID: config.rpID,
+        credentials: credentials.map((c) => ({
+          id: c.id,
+          credentialId: c.credential_id,
+          deviceType: c.device_type ?? "singleDevice",
+          backedUp: Boolean(c.backed_up),
+          createdAt: c.created_at ?? account.created_at,
+        })),
+      });
+    } catch {
+      return response.status(500).json({
+        code: "PROFILE_FETCH_FAILED",
+        message: "Your account profile could not be loaded.",
+        spoken: "Your account profile could not be loaded.",
+      });
+    }
   });
 
   return router;

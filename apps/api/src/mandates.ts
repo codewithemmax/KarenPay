@@ -176,7 +176,14 @@ export function createMandateRouter(config: MandateConfig): Router {
         mandate_hash: mandateHash,
         state: "CREATED",
       });
-      await store.createAuditEvent(accountId, mandateId, "MANDATE_CREATED", { mandateHash });
+      await store.createAuditEvent(accountId, mandateId, "MANDATE_CREATED", {
+        mandateHash,
+        requestHash: mandate.requestHash,
+        spokenText: mandate.spokenText,
+        payeeName: payeeDisplayName,
+        amountMinor: mandate.amountMinor,
+        currency: mandate.currency,
+      });
 
       const approvalOptions = await generateAuthenticationOptions({
         rpID: config.rpID,
@@ -190,6 +197,7 @@ export function createMandateRouter(config: MandateConfig): Router {
         mandateHash,
         spoken: spokenText,
         readoutRequired: true,
+        expiresAt: expiresAt.toISOString(),
         approvalOptions,
       });
     } catch (error) {
