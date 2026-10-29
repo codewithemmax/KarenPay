@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Fingerprint,
+  KeyRound,
   Lock,
   Mic,
   RotateCcw,
@@ -167,6 +168,7 @@ function PayTerminalInner(): React.JSX.Element {
   // Step 4 Judge Demo Tamper Switch & Approval result
   const [tamperEnabled, setTamperEnabled] = useState<boolean>(false);
   const [isApproving, setIsApproving] = useState<boolean>(false);
+  const [approvalPin, setApprovalPin] = useState<string>("");
   const [approvalResult, setApprovalResult] =
     useState<MandateApproveResponse | null>(null);
   const [approvalRejected, setApprovalRejected] = useState<boolean>(false);
@@ -693,7 +695,7 @@ function PayTerminalInner(): React.JSX.Element {
       }
     } catch {
       const errMsg =
-        "Passkey verification was cancelled or failed. No test payment was sent.";
+        "Passkey verification was cancelled or failed. You can also approve with your 6-digit PIN below.";
       setErrorBanner(errMsg);
       announceAssertive(errMsg);
     } finally {
@@ -710,12 +712,88 @@ function PayTerminalInner(): React.JSX.Element {
     tamperEnabled,
   ]);
 
+  const handleApproveWithPin = useCallback(async () => {
+    if (
+      !mandate ||
+      !readoutCompletedCleanly ||
+      isSpeakingReadout ||
+      isApproving
+    ) {
+      return;
+    }
+
+    const cleanPin = approvalPin.trim();
+    if (!/^\d{6}$/.test(cleanPin)) {
+      const msg = "Please enter your 6-digit security PIN to approve.";
+      setErrorBanner(msg);
+      announceAssertive(msg);
+      return;
+    }
+
+    setIsApproving(true);
+    setErrorBanner(null);
+
+    try {
+      const challengeToSend = tamperEnabled
+        ? "tampered_challenge_after_readout"
+        : mandate.mandateHash;
+
+      const res = await fetch(`/api/v1/mandates/${mandate.mandateId}/approve`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fallbackMethod: "pin",
+          pin: cleanPin,
+          challenge: challengeToSend,
+        }),
+      });
+
+      const data = (await res.json()) as MandateApproveResponse;
+      setApprovalResult(data);
+      setStep(4);
+
+      if (!res.ok || data.code === "APPROVAL_REJECTED") {
+        setApprovalRejected(true);
+        setErrorBanner(
+          `401 ${data.code || "APPROVAL_REJECTED"}: ${data.spoken || data.message}`,
+        );
+        announceAssertive(data.spoken || data.message);
+        speakServerText(data.spoken || data.message, {
+          isMandatoryReadout: false,
+        });
+      } else {
+        setApprovalRejected(false);
+        announcePolite(data.spoken);
+        speakServerText(data.spoken, { isMandatoryReadout: false });
+      }
+    } catch {
+      const errMsg =
+        "Could not verify your 6-digit PIN. No test payment was sent.";
+      setErrorBanner(errMsg);
+      announceAssertive(errMsg);
+    } finally {
+      setIsApproving(false);
+    }
+  }, [
+    announceAssertive,
+    announcePolite,
+    approvalPin,
+    isApproving,
+    isSpeakingReadout,
+    mandate,
+    readoutCompletedCleanly,
+    speakServerText,
+    tamperEnabled,
+  ]);
+
   const handleResetFlow = useCallback(() => {
     stopActiveSpeech(false);
     stopListening();
     setStep(1);
     setMandate(null);
     setProposal(null);
+    setApprovalPin("");
     setApprovalResult(null);
     setApprovalRejected(false);
     setErrorBanner(null);
@@ -1085,10 +1163,52 @@ function PayTerminalInner(): React.JSX.Element {
                 <Fingerprint className="h-6 w-6 shrink-0" aria-hidden="true" />
                 <span>
                   {isApproving
-                    ? "Verifying Passkey..."
+                    ? "Verifying..."
                     : "Approve with Fingerprint or Face"}
                 </span>
               </button>
+
+              {/* Hard Readout-Locked 6-Digit PIN Fallback Approval (for devices without biometrics) */}
+              <div className="rounded-xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4">
+                <label
+                  htmlFor="pay-approve-pin"
+                  className="block text-[15px] font-bold text-[var(--text)]"
+                >
+                  No fingerprint or face sensor? Approve with your 6-digit PIN
+                </label>
+                <div className="mt-2.5 flex flex-col gap-2.5 sm:flex-row">
+                  <input
+                    id="pay-approve-pin"
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    disabled={!isApproveUnlocked || isApproving}
+                    value={approvalPin}
+                    onChange={(e) =>
+                      setApprovalPin(
+                        e.target.value.replace(/\D/g, "").slice(0, 6),
+                      )
+                    }
+                    placeholder="6-digit PIN"
+                    className="num min-h-[48px] flex-1 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2.5 text-[18px] font-bold tracking-widest text-[var(--text)] placeholder:text-[var(--text-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <button
+                    type="button"
+                    data-testid="approve-pin-button"
+                    disabled={!isApproveUnlocked || isApproving}
+                    aria-disabled={!isApproveUnlocked || isApproving}
+                    onClick={() => void handleApproveWithPin()}
+                    className={`inline-flex min-h-[48px] shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-[var(--border-strong)] px-5 py-2.5 text-[16px] font-bold transition-colors ${
+                      isApproveUnlocked && !isApproving
+                        ? "cursor-pointer bg-[var(--surface-tint)] text-[var(--text)] hover:bg-[var(--peach)]"
+                        : "cursor-not-allowed bg-[var(--surface-tint)] text-[var(--text-muted)] opacity-60"
+                    }`}
+                  >
+                    <KeyRound className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    <span>Approve with PIN</span>
+                  </button>
+                </div>
+              </div>
 
               {!isApproveUnlocked && !approvalResult ? (
                 <p className="text-[14px] font-bold text-[var(--text-muted)]">
