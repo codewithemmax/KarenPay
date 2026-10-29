@@ -107,6 +107,10 @@ function getAuditEventsStore(): StoredAuditEvent[] {
         amountMinor: 5000,
         currency: "USD",
         payoutBatchId: "BATCH-KP-2048",
+        mandateHash: "9fK4xP2mQ8vR1wZ7nL5cT3yB6hJ0dG8sA4eW2uY9iO1",
+        requestHash: "3bN8mV5xC1zL9kP4qW7rT2yU6iO0pA3sD5fG8hJ2kL4",
+        spokenText:
+          "You asked to send fifty dollars to Ade Bello. That is five, zero dollars. This is a test payment. To approve, use your fingerprint or face now.",
       },
       new Date(now - 2 * 60 * 60 * 1000).toISOString(),
     );
@@ -118,6 +122,10 @@ function getAuditEventsStore(): StoredAuditEvent[] {
         amountMinor: 2500,
         currency: "USD",
         payoutBatchId: "BATCH-KP-2019",
+        mandateHash: "7hJ2kL4nM8pQ1rS5tV9wX3yZ6bC0dF4gH8jK2lM6nP0",
+        requestHash: "5tV9wX3yZ6bC0dF4gH8jK2lM6nP0qR4sT8uV2wX6yZ0",
+        spokenText:
+          "You asked to send twenty five dollars to Chidi Okonkwo. That is two, five dollars. This is a test payment. To approve, use your fingerprint or face now.",
       },
       new Date(now - 26 * 60 * 60 * 1000).toISOString(),
     );
@@ -129,6 +137,10 @@ function getAuditEventsStore(): StoredAuditEvent[] {
         amountMinor: 15000,
         currency: "USD",
         code: "APPROVAL_REJECTED",
+        mandateHash: "2wX6yZ0bC4dF8gH2jK6lM0nP4qR8sT2uV6wX0yZ4bC8",
+        requestHash: "8sT2uV6wX0yZ4bC8dF2gH6jK0lM4nP8qR2sT6uV0wX4",
+        spokenText:
+          "Rejected. The payment details did not match what was read aloud. No test payment was sent.",
       },
       new Date(now - 50 * 60 * 60 * 1000).toISOString(),
     );
@@ -591,6 +603,8 @@ async function handleRequest(
     ) {
       appendServerAuditEvent(null, "MANDATE_REJECTED", {
         code: "INTENT_MISMATCH",
+        requestHash,
+        spokenText: "The payment details do not match your request.",
       });
       return NextResponse.json(
         {
@@ -606,6 +620,8 @@ async function handleRequest(
     if (!contact) {
       appendServerAuditEvent(null, "MANDATE_REJECTED", {
         code: "RECIPIENT_NOT_FOUND",
+        requestHash,
+        spokenText: "This test payment is not allowed.",
       });
       return NextResponse.json(
         {
@@ -622,12 +638,16 @@ async function handleRequest(
         code: "AMOUNT_EXCEEDS_POLICY",
         payeeName: contact.displayName,
         amountMinor: proposal.amountMinor,
+        requestHash,
+        spokenText:
+          "This test payment exceeds the sandbox limit of five hundred dollars.",
       });
       return NextResponse.json(
         {
           code: "AMOUNT_EXCEEDS_POLICY",
           message: "This test payment exceeds the sandbox limit of $500.00.",
-          spoken: "This test payment exceeds the sandbox limit of five hundred dollars.",
+          spoken:
+            "This test payment exceeds the sandbox limit of five hundred dollars.",
         },
         { status: 422 },
       );
@@ -686,6 +706,8 @@ async function handleRequest(
     getMandateStore().set(mandateId, stored);
     appendServerAuditEvent(mandateId, "MANDATE_CREATED", {
       mandateHash,
+      requestHash,
+      spokenText,
       payeeName: contact.displayName,
       amountMinor: proposal.amountMinor,
       currency: proposal.currency,
@@ -769,9 +791,14 @@ async function handleRequest(
 
     if (isTampered) {
       mandate.state = "REJECTED";
+      const rejectionSpoken =
+        "Rejected. The payment details did not match what was read aloud. No test payment was sent.";
       appendServerAuditEvent(mandateId, "APPROVAL_REJECTED", {
         code: "APPROVAL_REJECTED",
         reason: "CHALLENGE_OR_AMOUNT_MISMATCH",
+        mandateHash: mandate.mandateHash,
+        requestHash: mandate.requestHash,
+        spokenText: rejectionSpoken,
         payeeName: mandate.payeeDisplayName,
         amountMinor:
           typeof body.amountMinor === "number"
@@ -785,8 +812,7 @@ async function handleRequest(
           status: "Rejected",
           message:
             "The approval could not be verified. The payment details did not match the readout.",
-          spoken:
-            "Rejected. The payment details did not match what was read aloud. No test payment was sent.",
+          spoken: rejectionSpoken,
         },
         { status: 401 },
       );
@@ -797,11 +823,17 @@ async function handleRequest(
     mandate.paypalRef = paypalRef;
 
     appendServerAuditEvent(mandateId, "MANDATE_CONSUMED", {
+      mandateHash: mandate.mandateHash,
+      requestHash: mandate.requestHash,
+      spokenText: mandate.spokenText,
       payeeName: mandate.payeeDisplayName,
       amountMinor: mandate.amountMinor,
       currency: mandate.currency,
     });
     appendServerAuditEvent(mandateId, "PAYMENT_SENT", {
+      mandateHash: mandate.mandateHash,
+      requestHash: mandate.requestHash,
+      spokenText: mandate.spokenText,
       payeeName: mandate.payeeDisplayName,
       amountMinor: mandate.amountMinor,
       currency: mandate.currency,

@@ -174,3 +174,20 @@ export function withMaskedHint(
     maskedHint: `Sandbox •••• ${suffix}`,
   };
 }
+
+
+export function formatUsdMinor(amountMinor: number): string {
+  return formatMoneyMinor(amountMinor);
+}
+
+export function recordLocalPaymentCompleted(amountMinor: number): void {
+  if (typeof window === "undefined") return;
+  try {
+    const prevRaw = window.localStorage.getItem("kp_voice_limit_used_minor");
+    const prev = prevRaw ? Number.parseInt(prevRaw, 10) : DEMO_VOICE_LIMIT_USED_MINOR;
+    const next = (Number.isFinite(prev) ? prev : DEMO_VOICE_LIMIT_USED_MINOR) + amountMinor;
+    window.localStorage.setItem("kp_voice_limit_used_minor", String(next));
+  } catch {
+    // ignore storage errors
+  }
+}
