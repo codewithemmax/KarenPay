@@ -73,7 +73,7 @@ export default function ContactsPage() {
         <Link
           href="/home"
           aria-label="Back to home"
-          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-surface text-ink shadow-card transition-colors hover:bg-surface-tint"
+          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-divider bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
         >
           <ArrowLeft aria-hidden="true" className="h-5 w-5" />
         </Link>
@@ -101,15 +101,15 @@ export default function ContactsPage() {
 
         <section aria-label="Saved contacts">
           {loading ? (
-            <div className="rounded-card bg-surface p-5 shadow-card">
+            <div className="rounded-card border border-divider bg-surface p-5 shadow-card">
               <p className="text-base text-text-muted">Loading contacts…</p>
             </div>
           ) : contacts.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-card bg-surface p-6 text-center shadow-card">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink">
+            <div className="flex flex-col items-center gap-2 rounded-card border border-divider bg-surface p-6 text-center shadow-card">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-text">
                 <Users aria-hidden="true" className="h-6 w-6" />
               </div>
-              <p className="text-base font-medium text-text">
+              <p className="text-base font-bold text-text">
                 No contacts saved yet
               </p>
               <p className="text-sm text-text-muted">
@@ -121,7 +121,7 @@ export default function ContactsPage() {
               {contacts.slice(0, 5).map((contact, idx) => (
                 <li
                   key={contact.id}
-                  className="flex items-center justify-between gap-3 rounded-card bg-surface p-4 shadow-card"
+                  className="flex items-center justify-between gap-3 rounded-card border border-divider bg-surface p-4 shadow-card"
                 >
                   <div className="flex min-w-0 items-center gap-3.5">
                     <span
@@ -131,7 +131,7 @@ export default function ContactsPage() {
                       {getInitials(contact.displayName)}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-base font-semibold text-text">
+                      <p className="text-base font-bold text-text">
                         {contact.displayName}
                       </p>
                       <p
@@ -153,7 +153,7 @@ export default function ContactsPage() {
           disabled
           aria-disabled="true"
           tabIndex={-1}
-          className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-ink"
+          className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-full bg-surface-tint px-5 py-3 text-base font-bold text-text"
         >
           <UserPlus aria-hidden="true" className="h-5 w-5" />
           <span>Add contact</span>

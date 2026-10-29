@@ -139,7 +139,7 @@ export default function RegisterPage() {
         <header aria-label="Account setup" className="pt-2" />
 
         <main className="flex flex-1 flex-col items-center justify-center">
-          <section className="flex w-full flex-col items-center rounded-card bg-surface p-8 text-center shadow-card">
+          <section className="flex w-full flex-col items-center rounded-card border border-divider bg-surface p-8 text-center shadow-card">
             <div
               aria-hidden="true"
               className="flex h-20 w-20 items-center justify-center rounded-full bg-ink text-peach"
@@ -184,14 +184,14 @@ export default function RegisterPage() {
         <Link
           href="/"
           aria-label="Back"
-          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-surface text-ink shadow-card transition-colors hover:bg-surface-tint"
+          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-divider bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
         >
           <ArrowLeft aria-hidden="true" className="h-5 w-5" />
         </Link>
       </header>
 
       <main className="flex flex-1 flex-col justify-center">
-        <section className="rounded-card bg-surface p-6 shadow-card">
+        <section className="rounded-card border border-divider bg-surface p-6 shadow-card">
           <h1 className="text-[28px] font-bold leading-tight text-text">
             Create your account
           </h1>
@@ -214,7 +214,7 @@ export default function RegisterPage() {
             <div>
               <label
                 htmlFor="account-holder-name"
-                className="block text-base font-medium text-text"
+                className="block text-base font-bold text-text"
               >
                 Your name
               </label>
@@ -229,7 +229,7 @@ export default function RegisterPage() {
                 aria-invalid={errorMessage ? "true" : "false"}
                 aria-describedby={describedByIds}
                 placeholder="Ade Bello"
-                className="mt-2 min-h-[48px] w-full rounded-input border border-input-border bg-surface px-4 py-3 text-base text-text placeholder:text-text-muted"
+                className="mt-2 min-h-[48px] w-full rounded-input border-2 border-input-border bg-surface px-4 py-3 text-base text-text placeholder:text-text-muted"
               />
               <p id="name-helper" className="mt-2 text-sm text-text-muted">
                 You will use your fingerprint or face instead of a password.
@@ -245,10 +245,10 @@ export default function RegisterPage() {
               )}
             </div>
 
-            <div className="flex items-start gap-3 rounded-input bg-surface-tint p-4 text-sm text-text">
+            <div className="flex items-start gap-3 rounded-input bg-warning-bg p-4 text-sm text-warning-text">
               <Info
                 aria-hidden="true"
-                className="mt-0.5 h-5 w-5 shrink-0 text-ink"
+                className="mt-0.5 h-5 w-5 shrink-0 text-warning-text"
               />
               <p>
                 <strong className="font-bold">Important:</strong> Only create a

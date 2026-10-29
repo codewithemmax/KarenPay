@@ -41,9 +41,9 @@ export function BottomTabBar({ activeTab }: BottomTabBarProps) {
                 aria-hidden="true"
                 className={`flex h-7 w-12 items-center justify-center rounded-full ${
                   isCurrent
-                    ? "bg-surface-tint text-ink"
+                    ? "bg-surface-tint text-text"
                     : tab.key === "pay"
-                      ? "bg-primary text-text"
+                      ? "bg-primary text-white"
                       : "text-text-muted"
                 }`}
               >
@@ -63,7 +63,7 @@ export function BottomTabBar({ activeTab }: BottomTabBarProps) {
               <span
                 className={
                   isCurrent
-                    ? "font-bold text-ink"
+                    ? "font-bold text-text"
                     : "font-medium text-text-muted"
                 }
               >

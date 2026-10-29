@@ -104,11 +104,11 @@ export default function WelcomeSignInPage() {
         >
           <ShieldCheck aria-hidden="true" className="h-6 w-6" />
         </div>
-        <span className="text-[20px] font-semibold text-text">KarenPay</span>
+        <span className="text-[20px] font-bold text-text">KarenPay</span>
       </header>
 
       <main className="flex flex-1 flex-col justify-center gap-6">
-        <section className="rounded-card bg-surface p-6 shadow-card">
+        <section className="rounded-card border border-divider bg-surface p-6 shadow-card">
           {/* Decorative flat solid sunset (max 160px tall, aria-hidden, no text on top) */}
           <div
             aria-hidden="true"
@@ -116,7 +116,7 @@ export default function WelcomeSignInPage() {
           >
             <svg
               aria-hidden="true"
-               focusable="false"
+              focusable="false"
               viewBox="0 0 400 128"
               preserveAspectRatio="none"
               className="h-full w-full"
@@ -124,15 +124,15 @@ export default function WelcomeSignInPage() {
               {/* Outer --sun half-circle */}
               <circle cx="200" cy="96" r="68" fill="#FFCC6B" />
               {/* Inner --primary half-circle */}
-              <circle cx="200" cy="96" r="46" fill="#FF9F31" />
+              <circle cx="200" cy="96" r="46" fill="#B82D14" />
               {/* Flat solid --ink hills */}
               <path
                 d="M0 98 Q95 72 205 94 T400 84 L400 128 L0 128 Z"
-                fill="#312C51"
+                fill="#1F0D09"
               />
               <path
                 d="M0 108 Q140 88 260 106 T400 98 L400 128 L0 128 Z"
-                fill="#312C51"
+                fill="#1F0D09"
               />
             </svg>
           </div>
@@ -177,7 +177,7 @@ export default function WelcomeSignInPage() {
 
             <Link
               href="/register"
-              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-surface-tint px-5 py-3 text-base font-semibold text-ink transition-colors hover:bg-peach"
+              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-surface-tint px-5 py-3 text-base font-bold text-text transition-colors hover:bg-peach"
             >
               Create an account
             </Link>
@@ -186,13 +186,13 @@ export default function WelcomeSignInPage() {
 
         <section
           aria-label="How KarenPay works"
-          className="rounded-card bg-surface p-5 shadow-card"
+          className="rounded-card border border-divider bg-surface p-5 shadow-card"
         >
           <ul className="flex flex-col gap-4">
             <li className="flex items-center gap-3.5">
               <div
                 aria-hidden="true"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <Volume2 aria-hidden="true" className="h-5 w-5" />
               </div>
@@ -204,7 +204,7 @@ export default function WelcomeSignInPage() {
             <li className="flex items-center gap-3.5">
               <div
                 aria-hidden="true"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <Fingerprint aria-hidden="true" className="h-5 w-5" />
               </div>
@@ -216,7 +216,7 @@ export default function WelcomeSignInPage() {
             <li className="flex items-center gap-3.5">
               <div
                 aria-hidden="true"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <ShieldCheck aria-hidden="true" className="h-5 w-5" />
               </div>

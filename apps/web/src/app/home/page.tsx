@@ -236,10 +236,10 @@ export default function HomePage() {
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-base font-semibold text-text">
+              <h1 className="truncate text-base font-bold text-text">
                 {greeting}, {firstName}
               </h1>
-              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
+              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
                 Sandbox
               </span>
             </div>
@@ -252,7 +252,7 @@ export default function HomePage() {
           onClick={() =>
             announceStatus("No new notifications in this sandbox demo.")
           }
-          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-full bg-surface text-ink shadow-card transition-colors hover:bg-surface-tint"
+          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-full border border-divider bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
         >
           <Bell aria-hidden="true" className="h-5 w-5" />
         </button>
@@ -322,7 +322,7 @@ export default function HomePage() {
               disabled
               aria-disabled="true"
               tabIndex={-1}
-              className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-1.5 rounded-full bg-surface-tint px-4 py-2.5 text-sm font-semibold text-ink"
+              className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-1.5 rounded-full bg-surface-tint px-4 py-2.5 text-sm font-bold text-text"
             >
               <span>Add money</span>
               <span className="text-sm font-normal text-text-muted">
@@ -332,7 +332,7 @@ export default function HomePage() {
 
             <Link
               href="/activity"
-              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-surface px-4 py-2.5 text-center text-sm font-semibold text-ink transition-colors hover:bg-surface-tint"
+              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-surface px-4 py-2.5 text-center text-sm font-bold text-text transition-colors hover:bg-surface-tint"
             >
               Transaction history
             </Link>
@@ -343,7 +343,7 @@ export default function HomePage() {
               <span id="voice-limit-label" className="num">
                 Voice limit today {formattedUsed} of {formattedMax}
               </span>
-              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
+              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
                 Demo
               </span>
             </div>
@@ -371,24 +371,24 @@ export default function HomePage() {
           <div className="grid grid-cols-4 gap-3">
             <Link
               href="/pay"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-text"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white"
               >
                 <Mic aria-hidden="true" className="h-6 w-6" />
               </span>
-              <span className="text-sm font-semibold text-text">Voice pay</span>
+              <span className="text-sm font-bold text-text">Voice pay</span>
             </Link>
 
             <Link
               href="/contacts"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <Users aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -397,11 +397,11 @@ export default function HomePage() {
 
             <Link
               href="/activity"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <History aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -410,11 +410,11 @@ export default function HomePage() {
 
             <Link
               href="/me"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <ShieldCheck aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -428,14 +428,14 @@ export default function HomePage() {
           <div className="flex items-center justify-between gap-2">
             <h2
               id="recent-recipients-heading"
-              className="text-[20px] font-semibold text-text"
+              className="text-[20px] font-bold text-text"
             >
               Recent recipients
             </h2>
           </div>
 
           {contacts.length === 0 ? (
-            <p className="mt-3 rounded-card bg-surface p-4 text-sm text-text-muted shadow-card">
+            <p className="mt-3 rounded-card border border-divider bg-surface p-4 text-sm text-text-muted shadow-card">
               No saved contacts yet.
             </p>
           ) : (
@@ -444,7 +444,7 @@ export default function HomePage() {
                 <Link
                   key={contact.id}
                   href="/contacts"
-                  className="flex min-h-[64px] min-w-[68px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-input bg-surface px-3 py-2.5 text-center shadow-card transition-colors hover:bg-surface-tint"
+                  className="flex min-h-[64px] min-w-[68px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-input border border-divider bg-surface px-3 py-2.5 text-center shadow-card transition-colors hover:bg-surface-tint"
                 >
                   <span
                     aria-hidden="true"
@@ -466,19 +466,19 @@ export default function HomePage() {
           <div className="flex items-center justify-between gap-2">
             <h2
               id="recent-activity-heading"
-              className="text-[20px] font-semibold text-text"
+              className="text-[20px] font-bold text-text"
             >
               Recent activity
             </h2>
             <Link
               href="/activity"
-              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-tint"
+              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full px-3 text-sm font-bold text-text transition-colors hover:bg-surface-tint"
             >
               See all
             </Link>
           </div>
 
-          <div className="mt-2 rounded-card bg-surface p-5 shadow-card">
+          <div className="mt-2 rounded-card border border-divider bg-surface p-5 shadow-card">
             {loading ? (
               <p className="text-base text-text-muted">
                 Loading recent activity…
@@ -498,7 +498,7 @@ export default function HomePage() {
                         {getInitials(item.recipientName)}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-base font-semibold text-text">
+                        <p className="truncate text-base font-bold text-text">
                           {item.title}
                         </p>
                         <p className="num truncate text-sm text-text-muted">
@@ -514,7 +514,7 @@ export default function HomePage() {
                       >
                         {item.amountFormatted}
                       </p>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
                         {item.isBlocked ? (
                           <ShieldAlert
                             aria-hidden="true"
@@ -548,7 +548,7 @@ export default function HomePage() {
         >
           <span
             aria-hidden="true"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-ink"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-text"
           >
             <Mic aria-hidden="true" className="h-5 w-5" />
           </span>
