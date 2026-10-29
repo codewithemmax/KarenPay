@@ -9,6 +9,8 @@
     "apps/*"
   ],
   "scripts": {
+    "dev:api": "bun --env-file=.env --watch apps/api/src/server.ts",
+    "dev:web": "bun run --cwd apps/web dev",
     "build": "tsc --noEmit && tsc --noEmit -p apps/web/tsconfig.json",
     "test": "vitest run"
   },
