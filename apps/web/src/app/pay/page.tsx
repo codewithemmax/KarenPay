@@ -15,7 +15,7 @@ import {
   Volume2,
 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, {
   Suspense,
   useCallback,
@@ -26,19 +26,23 @@ import React, {
 } from "react";
 import { Button } from "../../components/Button";
 import { useAnnounce } from "../../components/LiveRegions";
-import {
-  DEMO_CONTACTS,
-  formatUsdMinor,
-  recordLocalPaymentCompleted,
-} from "../../lib/demoData";
+import { formatUsdMinor } from "../../lib/demoData";
 
 type FlowStep = 1 | 2 | 3 | 4;
 
+interface SavedContact {
+  id: string;
+  displayName: string;
+  paypalSandboxEmail: string;
+}
+
 interface IntentProposal {
   action: "send_money";
-  payeeContactId: string;
+  payeeContactId?: string;
+  payeeName?: string;
+  payeeAccountNumber?: string;
   amountMinor: number;
-  currency: "USD";
+  currency: string;
 }
 
 interface IntentResponse {
@@ -55,10 +59,10 @@ interface MandateCreatedResponse {
   mandateHash: string;
   spoken: string;
   readoutRequired: boolean;
-  expiresAt: string;
+  expiresAt?: string;
   approvalOptions: {
     challenge: string;
-    rpId: string;
+    rpId?: string;
     timeout?: number;
     userVerification?: "required" | "preferred" | "discouraged";
     allowCredentials?: { id: string; type: "public-key" }[];
@@ -67,7 +71,7 @@ interface MandateCreatedResponse {
 
 interface MandateApproveResponse {
   code: string;
-  status: string;
+  status?: string;
   message: string;
   spoken: string;
   paypalRef?: string;
@@ -124,6 +128,7 @@ function truncateHash(hash: string): string {
 }
 
 function PayTerminalInner(): React.JSX.Element {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialRecipient = searchParams.get("recipient") ?? "";
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -131,6 +136,7 @@ function PayTerminalInner(): React.JSX.Element {
   const tamperSwitchId = useId();
   const { announcePolite, announceAssertive } = useAnnounce();
 
+  const [contacts, setContacts] = useState<SavedContact[]>([]);
   const [step, setStep] = useState<FlowStep>(1);
   const [transcript, setTranscript] = useState<string>(
     initialRecipient ? `Send 50 dollars to ${initialRecipient}` : "",
@@ -175,7 +181,27 @@ function PayTerminalInner(): React.JSX.Element {
 
   useEffect(() => {
     headingRef.current?.focus();
-  }, []);
+    void (async () => {
+      try {
+        const res = await fetch("/api/v1/contacts", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (res.status === 401) {
+          router.replace("/");
+          return;
+        }
+        if (res.ok) {
+          const data = (await res.json()) as { contacts?: SavedContact[] };
+          if (Array.isArray(data.contacts)) {
+            setContacts(data.contacts);
+          }
+        }
+      } catch {
+        // Ignore initial contact load failure
+      }
+    })();
+  }, [router]);
 
   useEffect(() => {
     if (initialRecipient && !transcript) {
@@ -210,7 +236,6 @@ function PayTerminalInner(): React.JSX.Element {
     [clearSpeechTimers],
   );
 
-  // Speak arbitrary server response.spoken string verbatim
   const speakServerText = useCallback(
     (
       spokenText: string,
@@ -292,7 +317,6 @@ function PayTerminalInner(): React.JSX.Element {
         setIsSpeakingReadout(false);
       }
 
-      // Watchdog timer in case browser TTS hangs without firing onend
       speechWatchdogRef.current = window.setTimeout(() => {
         if (!speechCancelledByUserRef.current) {
           finishCleanly();
@@ -302,7 +326,6 @@ function PayTerminalInner(): React.JSX.Element {
     [announcePolite, clearSpeechTimers],
   );
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearSpeechTimers();
@@ -323,8 +346,12 @@ function PayTerminalInner(): React.JSX.Element {
   useEffect(() => {
     if (!mandate || approvalResult) return;
 
+    const fallbackExpiresMs = Date.now() + 120 * 1000;
+    const expiresMs = mandate.expiresAt
+      ? new Date(mandate.expiresAt).getTime()
+      : fallbackExpiresMs;
+
     const updateTimer = () => {
-      const expiresMs = new Date(mandate.expiresAt).getTime();
       const diffSec = Math.max(0, Math.ceil((expiresMs - Date.now()) / 1000));
       setSecondsRemaining(diffSec);
       if (diffSec === 30) {
@@ -434,9 +461,15 @@ function PayTerminalInner(): React.JSX.Element {
       try {
         const intentRes = await fetch("/api/v1/intent", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript: cleanTranscript }),
         });
+
+        if (intentRes.status === 401) {
+          router.replace("/");
+          return;
+        }
 
         const intentData = (await intentRes.json()) as IntentResponse;
 
@@ -461,7 +494,6 @@ function PayTerminalInner(): React.JSX.Element {
           speakServerText(spokenPrompt, {
             isMandatoryReadout: false,
             onCompleteCleanly: () => {
-              // Re-open capture after clarification prompt finishes
               startListening();
             },
           });
@@ -483,20 +515,37 @@ function PayTerminalInner(): React.JSX.Element {
         const computedReqHash = await computeSha256Base64Url(cleanTranscript);
         setRequestHash(computedReqHash);
 
+        const requestConstraints: Record<string, unknown> = {
+          action: nextProposal.action,
+          maximumAmountMinor: nextProposal.amountMinor,
+          currency: nextProposal.currency,
+        };
+        if (nextProposal.payeeContactId) {
+          requestConstraints.payeeContactId = nextProposal.payeeContactId;
+        }
+        if (nextProposal.payeeName) {
+          requestConstraints.payeeName = nextProposal.payeeName;
+        }
+        if (nextProposal.payeeAccountNumber) {
+          requestConstraints.payeeAccountNumber =
+            nextProposal.payeeAccountNumber;
+        }
+
         const mandateRes = await fetch("/api/v1/mandates", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             proposal: nextProposal,
-            requestConstraints: {
-              action: nextProposal.action,
-              payeeContactId: nextProposal.payeeContactId,
-              maximumAmountMinor: nextProposal.amountMinor,
-              currency: nextProposal.currency,
-            },
+            requestConstraints,
             requestHash: computedReqHash,
           }),
         });
+
+        if (mandateRes.status === 401) {
+          router.replace("/");
+          return;
+        }
 
         const mandateData = (await mandateRes.json()) as MandateCreatedResponse & {
           message?: string;
@@ -530,6 +579,7 @@ function PayTerminalInner(): React.JSX.Element {
     },
     [
       announceAssertive,
+      router,
       speakServerText,
       startListening,
       stopListening,
@@ -538,9 +588,10 @@ function PayTerminalInner(): React.JSX.Element {
 
   const handleCandidateSelect = useCallback(
     (candidateName: string) => {
-      // Replace ambiguous name in transcript or build explicit transcript
       const amountMatch = transcript.match(/\$?\s*\d+(?:\.\d{1,2})?/);
-      const amountPhrase = amountMatch ? `${amountMatch[0]} dollars` : "50 dollars";
+      const amountPhrase = amountMatch
+        ? `${amountMatch[0]} dollars`
+        : "50 dollars";
       const updated = `Send ${amountPhrase} to ${candidateName}`;
       setTranscript(updated);
       void submitTranscript(updated);
@@ -568,14 +619,18 @@ function PayTerminalInner(): React.JSX.Element {
   ]);
 
   const handleApproveWithPasskey = useCallback(async () => {
-    if (!mandate || !readoutCompletedCleanly || isSpeakingReadout || isApproving) {
+    if (
+      !mandate ||
+      !readoutCompletedCleanly ||
+      isSpeakingReadout ||
+      isApproving
+    ) {
       return;
     }
 
     setIsApproving(true);
     setErrorBanner(null);
 
-    let assertionPayload: Record<string, unknown>;
     try {
       const credential = await startAuthentication({
         optionsJSON: {
@@ -587,56 +642,35 @@ function PayTerminalInner(): React.JSX.Element {
           allowCredentials: mandate.approvalOptions.allowCredentials ?? [],
         },
       });
-      assertionPayload = {
-        credential,
-        challenge: tamperEnabled
-          ? "tampered_challenge_after_readout"
-          : mandate.mandateHash,
-        amountMinor: tamperEnabled
-          ? (proposal?.amountMinor ?? 5000) + 45000
-          : proposal?.amountMinor,
-        tampered: tamperEnabled,
-      };
-    } catch {
-      // In sandbox / automated verification without a hardware authenticator enrolled,
-      // send a structured sandbox assertion bound to mandateHash (or mutated when tamperEnabled is ON)
-      assertionPayload = {
-        credential: {
-          id: "sandbox-passkey-credential",
-          rawId: "sandbox-passkey-credential",
-          type: "public-key",
-          response: {
-            clientDataJSON: btoa(
-              JSON.stringify({
-                type: "webauthn.get",
-                challenge: tamperEnabled
-                  ? "tampered_challenge_after_readout"
-                  : mandate.mandateHash,
-                origin:
-                  typeof window !== "undefined"
-                    ? window.location.origin
-                    : "http://localhost:3000",
-              }),
-            ),
-            authenticatorData: "sandbox-authenticator-data",
-            signature: "sandbox-signature",
-          },
-        },
-        challenge: tamperEnabled
-          ? "tampered_challenge_after_readout"
-          : mandate.mandateHash,
-        amountMinor: tamperEnabled
-          ? (proposal?.amountMinor ?? 5000) + 45000
-          : proposal?.amountMinor,
-        tampered: tamperEnabled,
-      };
-    }
 
-    try {
+      const assertionBody: Record<string, unknown> = {
+        ...credential,
+      };
+
+      // If the Judge Demo Tamper Switch is enabled, mutate the signed WebAuthn clientDataJSON
+      // challenge after readout so the backend's cryptographic verification rejects it with 401.
+      if (tamperEnabled && credential.response?.clientDataJSON) {
+        const tamperedClientData = btoa(
+          JSON.stringify({
+            type: "webauthn.get",
+            challenge: "tampered_challenge_after_readout",
+            origin: window.location.origin,
+          }),
+        )
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, "");
+        assertionBody.response = {
+          ...credential.response,
+          clientDataJSON: tamperedClientData,
+        };
+      }
+
       const res = await fetch(`/api/v1/mandates/${mandate.mandateId}/approve`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(assertionPayload),
+        body: JSON.stringify(assertionBody),
       });
 
       const data = (await res.json()) as MandateApproveResponse;
@@ -654,14 +688,12 @@ function PayTerminalInner(): React.JSX.Element {
         });
       } else {
         setApprovalRejected(false);
-        if (proposal) {
-          recordLocalPaymentCompleted(proposal.amountMinor);
-        }
         announcePolite(data.spoken);
         speakServerText(data.spoken, { isMandatoryReadout: false });
       }
     } catch {
-      const errMsg = "Approval request failed. No test payment was sent.";
+      const errMsg =
+        "Passkey verification was cancelled or failed. No test payment was sent.";
       setErrorBanner(errMsg);
       announceAssertive(errMsg);
     } finally {
@@ -673,7 +705,6 @@ function PayTerminalInner(): React.JSX.Element {
     isApproving,
     isSpeakingReadout,
     mandate,
-    proposal,
     readoutCompletedCleanly,
     speakServerText,
     tamperEnabled,
@@ -695,12 +726,14 @@ function PayTerminalInner(): React.JSX.Element {
     setTamperEnabled(false);
   }, [stopActiveSpeech, stopListening]);
 
-  const recipientContact = proposal
-    ? DEMO_CONTACTS.find((c) => c.id === proposal.payeeContactId)
+  const recipientContact = proposal?.payeeContactId
+    ? contacts.find((c) => c.id === proposal.payeeContactId)
     : null;
   const recipientDisplayName =
-    recipientContact?.displayName ?? initialRecipient ?? "Ade Bello";
-  const displayAmountMinor = proposal?.amountMinor ?? 5000;
+    recipientContact?.displayName ??
+    proposal?.payeeName ??
+    (initialRecipient || "Not selected yet");
+  const displayAmountMinor = proposal?.amountMinor ?? 0;
   const isApproveUnlocked =
     Boolean(mandate) &&
     readoutCompletedCleanly &&
@@ -824,8 +857,8 @@ function PayTerminalInner(): React.JSX.Element {
             </div>
 
             <p className="text-[16px] text-[var(--text-muted)]">
-              Example: &ldquo;Send 50 dollars to Ade Bello&rdquo; or &ldquo;Send
-              20 dollars to Bello&rdquo; to test contact disambiguation.
+              Speak a saved contact name (or recipient name and account number
+              digits), the amount, and currency.
             </p>
 
             {/* Primary 64px Voice Capture Button */}
@@ -876,7 +909,7 @@ function PayTerminalInner(): React.JSX.Element {
                 type="text"
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
-                placeholder="Send 50 dollars to Ade Bello"
+                placeholder="Send 50 dollars to your saved contact"
                 className="min-h-[56px] w-full rounded-xl border-2 border-[var(--border-strong)] bg-[var(--bg)] px-4 py-3 text-[16px] font-bold text-[var(--text)] placeholder:text-[var(--text-muted)]"
               />
               <Button
@@ -1014,8 +1047,8 @@ function PayTerminalInner(): React.JSX.Element {
                         Demo Attack: Tamper Amount / Challenge After Readout
                       </label>
                       <p className="mt-1 text-[14px] font-normal text-[var(--warning-text)]">
-                        Simulates a compromised client mutating the payment
-                        amount or WebAuthn challenge after the readout finishes.
+                        Simulates a compromised client mutating the WebAuthn
+                        challenge after the readout finishes.
                       </p>
                     </div>
                   </div>
@@ -1093,7 +1126,7 @@ function PayTerminalInner(): React.JSX.Element {
                     <h3 className="text-[20px] font-bold">
                       {approvalRejected
                         ? "401 APPROVAL_REJECTED"
-                        : approvalResult.status}
+                        : (approvalResult.status ?? "Test payment sent")}
                     </h3>
                   </div>
 
@@ -1166,9 +1199,7 @@ function PayTerminalInner(): React.JSX.Element {
               </span>
             </div>
             <p className="mt-2 text-[16px] font-bold text-[#FFFFFF]">
-              {transcript
-                ? `"${transcript}"`
-                : '"Send 50 dollars to Ade Bello"'}
+              {transcript ? `"${transcript}"` : "Awaiting spoken request..."}
             </p>
             <div className="mt-2 flex flex-wrap gap-3 text-[14px] text-[var(--peach)]">
               <span>
@@ -1211,7 +1242,7 @@ function PayTerminalInner(): React.JSX.Element {
                   checkIntent
                 </span>
                 <span className="rounded bg-[var(--sun)] px-2.5 py-0.5 text-[13px] font-bold text-[var(--text)]">
-                  PASS
+                  {mandate ? "PASS" : "WAIT"}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-[#1F0D09] px-3 py-2.5">
@@ -1219,11 +1250,11 @@ function PayTerminalInner(): React.JSX.Element {
                   checkLimits
                 </span>
                 <span className="rounded bg-[var(--sun)] px-2.5 py-0.5 text-[13px] font-bold text-[var(--text)]">
-                  PASS
+                  {mandate ? "PASS" : "WAIT"}
                 </span>
               </div>
               <p className="text-[14px] text-[var(--peach)]">
-                Pure deterministic policy guard verified recipient allowlist and
+                Pure deterministic policy guard verifies recipient allowlist and
                 $500.00 sandbox cap.
               </p>
             </div>

@@ -10,6 +10,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { BottomTabBar } from "../../components/BottomTabBar";
 import { useAnnounce } from "../../components/LiveRegions";
@@ -17,7 +18,7 @@ import { formatUsdMinor } from "../../lib/demoData";
 
 interface AuditEventRecord {
   id: string;
-  accountId: string;
+  accountId?: string;
   mandateId: string | null;
   eventType: string;
   detail: {
@@ -38,8 +39,9 @@ interface AuditEventRecord {
 }
 
 interface AuditChainResponse {
-  valid: boolean;
-  eventCount: number;
+  chainValid?: boolean;
+  valid?: boolean;
+  spoken?: string;
   events: AuditEventRecord[];
 }
 
@@ -67,21 +69,21 @@ function getApprovedStatusChip(eventType: string): {
 
 function getEventTitle(event: AuditEventRecord): string {
   const payee =
-    typeof event.detail.payeeName === "string"
+    event.detail && typeof event.detail.payeeName === "string"
       ? event.detail.payeeName
-      : "Sandbox Contact";
+      : null;
   switch (event.eventType) {
     case "PAYMENT_SENT":
-      return `Test payment to ${payee}`;
+      return payee ? `Test payment to ${payee}` : "Test payment sent";
     case "MANDATE_CONSUMED":
-      return `Passkey approved for ${payee}`;
+      return payee ? `Passkey approved for ${payee}` : "Passkey approved";
     case "MANDATE_CREATED":
-      return `Mandate created for ${payee}`;
+      return payee ? `Mandate created for ${payee}` : "Mandate created";
     case "APPROVAL_REJECTED":
     case "MANDATE_REJECTED":
-      return `Blocked payment to ${payee}`;
+      return payee ? `Blocked payment to ${payee}` : "Blocked payment request";
     default:
-      return `${event.eventType.replace(/_/g, " ")} — ${payee}`;
+      return event.eventType.replace(/_/g, " ");
   }
 }
 
@@ -102,6 +104,7 @@ function formatAuditTimestamp(iso: string): string {
 }
 
 export default function ActivityPage(): React.JSX.Element {
+  const router = useRouter();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -111,6 +114,7 @@ export default function ActivityPage(): React.JSX.Element {
   const [chainValid, setChainValid] = useState<boolean>(true);
   const [events, setEvents] = useState<AuditEventRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<AuditEventRecord | null>(
     null,
   );
@@ -118,29 +122,41 @@ export default function ActivityPage(): React.JSX.Element {
   const loadAuditLog = useCallback(
     async (announceRefresh = false) => {
       setIsLoading(true);
+      setLoadError(null);
       try {
-        const res = await fetch("/api/v1/audit", { cache: "no-store" });
+        const res = await fetch("/api/v1/audit", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (res.status === 401) {
+          router.replace("/");
+          return;
+        }
         if (res.ok) {
           const data = (await res.json()) as AuditChainResponse;
-          setChainValid(Boolean(data.valid));
-          // Show newest first in the UI while preserving each event's cryptographic prevHash/hash
+          const isValid = Boolean(data.chainValid ?? data.valid ?? true);
+          setChainValid(isValid);
           const ordered = [...(data.events ?? [])].reverse();
           setEvents(ordered);
           if (announceRefresh) {
             announcePolite(
-              data.valid
+              isValid
                 ? `Activity refreshed. Audit chain intact with ${ordered.length} events.`
                 : "Activity refreshed. Audit chain problem found.",
             );
           }
+        } else {
+          setLoadError("Unable to load your audit log.");
         }
       } catch {
-        // Keep existing events if network fails
+        setLoadError(
+          "Unable to connect to the KarenPay API server. Make sure the backend service is running.",
+        );
       } finally {
         setIsLoading(false);
       }
     },
-    [announcePolite],
+    [announcePolite, router],
   );
 
   useEffect(() => {
@@ -148,7 +164,6 @@ export default function ActivityPage(): React.JSX.Element {
     void loadAuditLog(false);
   }, [loadAuditLog]);
 
-  // Manage focus & Escape key for the Bottom Sheet / Modal Inspector
   useEffect(() => {
     if (!selectedEvent) return;
     const focusTimer = window.setTimeout(() => {
@@ -249,17 +264,28 @@ export default function ActivityPage(): React.JSX.Element {
         </span>
       </div>
 
+      {loadError ? (
+        <div className="rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--warning-bg)] p-5 text-[16px] font-bold text-[var(--warning-text)]">
+          {loadError}
+        </div>
+      ) : null}
+
       {/* Audit Event List */}
-      {isLoading && events.length === 0 ? (
+      {isLoading ? (
         <div className="rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-6 text-[16px] font-bold text-[var(--text)]">
           Loading audit events...
+        </div>
+      ) : events.length === 0 ? (
+        <div className="rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-6 text-[16px] text-[var(--text-muted)]">
+          No audit events recorded yet. Every mandate creation, passkey
+          approval, and payout event will be hash-chained here automatically.
         </div>
       ) : (
         <ul className="flex flex-col gap-3" aria-label="Audit events">
           {events.map((event) => {
             const chip = getApprovedStatusChip(event.eventType);
             const amountMinor =
-              typeof event.detail.amountMinor === "number"
+              event.detail && typeof event.detail.amountMinor === "number"
                 ? event.detail.amountMinor
                 : null;
             return (
@@ -365,7 +391,6 @@ export default function ActivityPage(): React.JSX.Element {
               </button>
             </div>
 
-            {/* Verification Status Badge */}
             <div className="flex items-center justify-between rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-4 py-3">
               <div className="flex items-center gap-2">
                 <ShieldCheck
@@ -381,7 +406,6 @@ export default function ActivityPage(): React.JSX.Element {
               </span>
             </div>
 
-            {/* Cryptographic Chain Details in .num */}
             <dl className="flex flex-col gap-3 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4">
               <div>
                 <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
@@ -403,7 +427,8 @@ export default function ActivityPage(): React.JSX.Element {
                   data-testid="inspector-mandate-hash"
                   className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
                 >
-                  {typeof selectedEvent.detail.mandateHash === "string"
+                  {selectedEvent.detail &&
+                  typeof selectedEvent.detail.mandateHash === "string"
                     ? selectedEvent.detail.mandateHash
                     : selectedEvent.hash}
                 </dd>
@@ -429,9 +454,10 @@ export default function ActivityPage(): React.JSX.Element {
                   data-testid="inspector-request-hash"
                   className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
                 >
-                  {typeof selectedEvent.detail.requestHash === "string"
+                  {selectedEvent.detail &&
+                  typeof selectedEvent.detail.requestHash === "string"
                     ? selectedEvent.detail.requestHash
-                    : "3bN8mV5xC1zL9kP4qW7rT2yU6iO0pA3sD5fG8hJ2kL4"}
+                    : "N/A"}
                 </dd>
               </div>
 
@@ -444,21 +470,20 @@ export default function ActivityPage(): React.JSX.Element {
                 </dd>
               </div>
 
-              <div className="border-t border-[var(--divider)] pt-2.5">
-                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  spokenText
-                </dt>
-                <dd
-                  data-testid="inspector-spoken-text"
-                  className="mt-1 text-[15px] font-bold leading-relaxed text-[var(--text)]"
-                >
-                  &ldquo;
-                  {typeof selectedEvent.detail.spokenText === "string"
-                    ? selectedEvent.detail.spokenText
-                    : "Test payment readout verified by server."}
-                  &rdquo;
-                </dd>
-              </div>
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.spokenText === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    spokenText
+                  </dt>
+                  <dd
+                    data-testid="inspector-spoken-text"
+                    className="mt-1 text-[15px] font-bold leading-relaxed text-[var(--text)]"
+                  >
+                    &ldquo;{selectedEvent.detail.spokenText}&rdquo;
+                  </dd>
+                </div>
+              ) : null}
             </dl>
 
             <button

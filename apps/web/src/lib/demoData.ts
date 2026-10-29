@@ -20,80 +20,9 @@ export interface ActivityPreviewRow {
     | "Rejected"
     | "Expired";
   isBlocked?: boolean;
-  isDemoPlaceholder?: boolean;
 }
 
-export const DEMO_HOLDER_DEFAULT_NAME = "Ade Bello";
-
-export const DEMO_BALANCE_MINOR = 245_000; // $2,450.00
-export const DEMO_VOICE_LIMIT_USED_MINOR = 5_000; // $50.00
-export const DEMO_VOICE_LIMIT_MAX_MINOR = 50_000; // $500.00
-
-export const DEMO_CONTACTS: readonly ContactItem[] = [
-  {
-    id: "33333333-3333-4333-8333-333333333333",
-    displayName: "Ade Bello",
-    paypalSandboxEmail: "ade.bello@sandbox.karenpay.test",
-    maskedHint: "Sandbox •••• 6789",
-  },
-  {
-    id: "44444444-4444-4444-8444-444444444444",
-    displayName: "Ada Bello",
-    paypalSandboxEmail: "ada.bello@sandbox.karenpay.test",
-    maskedHint: "Sandbox •••• 5432",
-  },
-  {
-    id: "55555555-5555-4555-8555-555555555555",
-    displayName: "Chidi Okonkwo",
-    paypalSandboxEmail: "chidi.okonkwo@sandbox.karenpay.test",
-    maskedHint: "Sandbox •••• 2011",
-  },
-  {
-    id: "66666666-6666-4666-8666-666666666666",
-    displayName: "Fatima Yusuf",
-    paypalSandboxEmail: "fatima.yusuf@sandbox.karenpay.test",
-    maskedHint: "Sandbox •••• 8100",
-  },
-  {
-    id: "77777777-7777-4777-8777-777777777777",
-    displayName: "Tunde Bakare",
-    paypalSandboxEmail: "tunde.bakare@sandbox.karenpay.test",
-    maskedHint: "Sandbox •••• 2736",
-  },
-] as const;
-
-export const DEMO_ACTIVITY_ROWS: readonly ActivityPreviewRow[] = [
-  {
-    id: "demo-act-1",
-    recipientName: "Ade Bello",
-    title: "To Ade Bello",
-    reference: "Ref KP-2048 · Sandbox demo",
-    dateLabel: "Today, 2:10 PM",
-    amountFormatted: "-$50.00",
-    statusLabel: "Test payment sent",
-    isDemoPlaceholder: true,
-  },
-  {
-    id: "demo-act-2",
-    recipientName: "Chidi Okonkwo",
-    title: "To Chidi Okonkwo",
-    reference: "Ref KP-2019 · Sandbox demo",
-    dateLabel: "Yesterday, 9:42 AM",
-    amountFormatted: "-$25.00",
-    statusLabel: "Test payment sent",
-    isDemoPlaceholder: true,
-  },
-  {
-    id: "demo-act-3",
-    recipientName: "Fatima Yusuf",
-    title: "To Fatima Yusuf",
-    reference: "Ref KP-1984 · Sandbox demo",
-    dateLabel: "Oct 20, 6:15 PM",
-    amountFormatted: "-$15.00",
-    statusLabel: "Test payment sent",
-    isDemoPlaceholder: true,
-  },
-] as const;
+export const VOICE_POLICY_LIMIT_MAX_MINOR = 50_000; // $500.00 policy cap
 
 const AVATAR_BG_CLASSES = ["bg-sun", "bg-peach", "bg-coral"] as const;
 
@@ -118,6 +47,10 @@ export function formatMoneyMinor(
   return `${prefix}${whole}.${cents}`;
 }
 
+export function formatUsdMinor(amountMinor: number): string {
+  return formatMoneyMinor(amountMinor);
+}
+
 export function getInitials(fullName: string): string {
   const parts = fullName
     .trim()
@@ -137,7 +70,7 @@ export function getFirstName(fullName: string): string {
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  return parts[0] ?? "Friend";
+  return parts[0] ?? "Account";
 }
 
 export function getTimeOfDayGreeting(now: Date = new Date()): string {
@@ -151,43 +84,19 @@ export function getTimeOfDayGreeting(now: Date = new Date()): string {
   return "Good evening";
 }
 
-const FALLBACK_HINTS = ["6789", "5432", "2011", "8100", "2736"] as const;
-
-export function withMaskedHint(
-  raw: { id: string; displayName: string; paypalSandboxEmail: string },
-  index: number,
-): ContactItem {
-  const matchedDemo = DEMO_CONTACTS.find(
-    (c) =>
-      c.id === raw.id ||
-      c.displayName.toLowerCase() === raw.displayName.toLowerCase(),
-  );
-  if (matchedDemo) {
-    return {
-      ...raw,
-      maskedHint: matchedDemo.maskedHint,
-    };
-  }
-  const suffix = FALLBACK_HINTS[index % FALLBACK_HINTS.length];
+export function withMaskedHint(raw: {
+  id: string;
+  displayName: string;
+  paypalSandboxEmail: string;
+}): ContactItem {
+  const email = raw.paypalSandboxEmail.trim();
+  const [localPart, domain] = email.split("@");
+  const maskedLocal =
+    localPart && localPart.length > 2
+      ? `${localPart.slice(0, 2)}••••`
+      : "••••";
   return {
     ...raw,
-    maskedHint: `Sandbox •••• ${suffix}`,
+    maskedHint: domain ? `${maskedLocal}@${domain}` : email,
   };
-}
-
-
-export function formatUsdMinor(amountMinor: number): string {
-  return formatMoneyMinor(amountMinor);
-}
-
-export function recordLocalPaymentCompleted(amountMinor: number): void {
-  if (typeof window === "undefined") return;
-  try {
-    const prevRaw = window.localStorage.getItem("kp_voice_limit_used_minor");
-    const prev = prevRaw ? Number.parseInt(prevRaw, 10) : DEMO_VOICE_LIMIT_USED_MINOR;
-    const next = (Number.isFinite(prev) ? prev : DEMO_VOICE_LIMIT_USED_MINOR) + amountMinor;
-    window.localStorage.setItem("kp_voice_limit_used_minor", String(next));
-  } catch {
-    // ignore storage errors
-  }
 }

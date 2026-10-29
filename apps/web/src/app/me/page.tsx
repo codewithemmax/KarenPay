@@ -11,25 +11,34 @@ import { useRouter } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import { BottomTabBar } from "../../components/BottomTabBar";
 import { useAnnounce } from "../../components/LiveRegions";
-import {
-  DEMO_HOLDER_DEFAULT_NAME,
-  getInitials,
-} from "../../lib/demoData";
+import { getInitials } from "../../lib/demoData";
 
 const HOLDER_NAME_STORAGE_KEY = "kp_holder_name";
 const PASSKEY_ID_STORAGE_KEY = "kp_passkey_id_hint";
+
+interface PasskeyProfileCredential {
+  id: string;
+  credentialId: string;
+  deviceType: string;
+  backedUp: boolean;
+  createdAt: string;
+}
+
+interface AccountProfileResponse {
+  accountId: string;
+  displayName: string;
+  createdAt: string;
+  rpID: string;
+  credentials: PasskeyProfileCredential[];
+}
 
 export default function MePage(): React.JSX.Element {
   const router = useRouter();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const { announcePolite } = useAnnounce();
 
-  const [holderName, setHolderName] = useState<string>(
-    DEMO_HOLDER_DEFAULT_NAME,
-  );
-  const [credentialHint, setCredentialHint] = useState<string>(
-    "cred_webauthn_8a4f...92c1",
-  );
+  const [profile, setProfile] = useState<AccountProfileResponse | null>(null);
+  const [holderName, setHolderName] = useState<string>("");
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
 
   useEffect(() => {
@@ -39,20 +48,39 @@ export default function MePage(): React.JSX.Element {
       if (savedName && savedName.trim()) {
         setHolderName(savedName.trim());
       }
-      const savedCred = window.localStorage.getItem(PASSKEY_ID_STORAGE_KEY);
-      if (savedCred && savedCred.trim()) {
-        setCredentialHint(savedCred.trim());
-      }
     } catch {
       // ignore storage errors
     }
-  }, []);
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/v1/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (res.status === 401) {
+          router.replace("/");
+          return;
+        }
+        if (res.ok) {
+          const data = (await res.json()) as AccountProfileResponse;
+          setProfile(data);
+          setHolderName(data.displayName);
+        }
+      } catch {
+        // ignore network error
+      }
+    })();
+  }, [router]);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
     setIsSigningOut(true);
     try {
-      await fetch("/api/v1/auth/logout", { method: "POST" });
+      await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
     } catch {
       // ignore network failure on logout
     }
@@ -65,6 +93,20 @@ export default function MePage(): React.JSX.Element {
     announcePolite("Signed out.");
     router.push("/");
   };
+
+  const activeCredential = profile?.credentials?.[0];
+  const formattedCredId = activeCredential?.credentialId
+    ? activeCredential.credentialId.length > 20
+      ? `${activeCredential.credentialId.slice(0, 10)}...${activeCredential.credentialId.slice(-6)}`
+      : activeCredential.credentialId
+    : "Enrolled passkey";
+  const enrolledDate = activeCredential?.createdAt
+    ? new Date(activeCredential.createdAt).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+      })
+    : "Active session";
 
   return (
     <div className="flex flex-col gap-6 pb-24">
@@ -95,10 +137,13 @@ export default function MePage(): React.JSX.Element {
           </div>
           <div>
             <h2 className="text-[20px] font-bold text-[var(--text)]">
-              {holderName}
+              {holderName || "Signed-in Account"}
             </h2>
             <p className="num text-[14px] text-[var(--text-muted)]">
-              Account ID: 11111111...1111
+              Account ID:{" "}
+              {profile?.accountId
+                ? `${profile.accountId.slice(0, 8)}...${profile.accountId.slice(-4)}`
+                : "Authenticated"}
             </p>
           </div>
         </div>
@@ -136,18 +181,19 @@ export default function MePage(): React.JSX.Element {
         <dl className="grid grid-cols-1 gap-3 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4 sm:grid-cols-2">
           <div>
             <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Credential ID Hint
+              Credential ID
             </dt>
             <dd className="num mt-0.5 text-[16px] font-bold text-[var(--text)]">
-              {credentialHint}
+              {formattedCredId}
             </dd>
           </div>
           <div>
             <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Enrolled Date
+              Enrolled Date &amp; RP
             </dt>
             <dd className="num mt-0.5 text-[16px] font-bold text-[var(--text)]">
-              2026-10-22 · RP localhost
+              {enrolledDate}
+              {profile?.rpID ? ` · RP ${profile.rpID}` : ""}
             </dd>
           </div>
         </dl>

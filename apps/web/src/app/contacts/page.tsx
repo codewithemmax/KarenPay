@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowLeft, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Send, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useId, useState } from "react";
 import { BottomTabBar } from "../../components/BottomTabBar";
 import { Button } from "../../components/Button";
+import { useLiveRegions } from "../../components/LiveRegions";
 import {
-  DEMO_CONTACTS,
   getAvatarBgClass,
   getInitials,
   withMaskedHint,
@@ -16,11 +16,18 @@ import {
 
 export default function ContactsPage() {
   const router = useRouter();
-  const [contacts, setContacts] = useState<readonly ContactItem[]>(
-    DEMO_CONTACTS,
-  );
+  const { announceStatus, clearStatus } = useLiveRegions();
+  const nameInputId = useId();
+  const emailInputId = useId();
+
+  const [contacts, setContacts] = useState<readonly ContactItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [showAddForm, setShowAddForm] = useState<boolean>(false);
+  const [newDisplayName, setNewDisplayName] = useState<string>("");
+  const [newSandboxEmail, setNewSandboxEmail] = useState<string>("");
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const loadContacts = useCallback(async () => {
     setLoading(true);
@@ -30,6 +37,7 @@ export default function ContactsPage() {
       const response = await fetch("/api/v1/contacts", {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
 
       if (response.status === 401) {
@@ -37,27 +45,34 @@ export default function ContactsPage() {
         return;
       }
 
-      if (response.ok) {
-        const body = (await response.json()) as {
-          contacts?: Array<{
-            id: string;
-            displayName: string;
-            paypalSandboxEmail: string;
-          }>;
-        };
-        if (Array.isArray(body.contacts)) {
-          setContacts(
-            body.contacts.slice(0, 5).map((item, idx) =>
-              withMaskedHint(item, idx),
-            ),
-          );
-          return;
-        }
+      const body = (await response.json()) as {
+        contacts?: Array<{
+          id: string;
+          displayName: string;
+          paypalSandboxEmail: string;
+        }>;
+        message?: string;
+        spoken?: string;
+      };
+
+      if (!response.ok) {
+        setErrorMessage(
+          body.spoken ?? body.message ?? "Your contacts could not be loaded.",
+        );
+        setContacts([]);
+        return;
       }
 
-      setContacts(DEMO_CONTACTS);
+      if (Array.isArray(body.contacts)) {
+        setContacts(
+          body.contacts.slice(0, 5).map((item) => withMaskedHint(item)),
+        );
+      } else {
+        setContacts([]);
+      }
     } catch {
-      setContacts(DEMO_CONTACTS);
+      setErrorMessage("Unable to connect to the server to load your contacts.");
+      setContacts([]);
     } finally {
       setLoading(false);
     }
@@ -67,23 +82,89 @@ export default function ContactsPage() {
     void loadContacts();
   }, [loadContacts]);
 
+  const handleCreateContact = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const displayName = newDisplayName.trim();
+    const paypalSandboxEmail = newSandboxEmail.trim();
+
+    if (!displayName || !paypalSandboxEmail) {
+      const msg = "Please enter both a contact name and PayPal Sandbox email.";
+      setErrorMessage(msg);
+      announceStatus(msg, "error");
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+    clearStatus();
+
+    try {
+      const res = await fetch("/api/v1/contacts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName, paypalSandboxEmail }),
+      });
+
+      if (res.status === 401) {
+        router.replace("/");
+        return;
+      }
+
+      const body = (await res.json()) as {
+        contact?: {
+          id: string;
+          displayName: string;
+          paypalSandboxEmail: string;
+        };
+        spoken?: string;
+        message?: string;
+      };
+
+      if (!res.ok || !body.contact) {
+        const msg =
+          body.spoken ?? body.message ?? "The contact could not be saved.";
+        setErrorMessage(msg);
+        announceStatus(msg, "error");
+        return;
+      }
+
+      setNewDisplayName("");
+      setNewSandboxEmail("");
+      setShowAddForm(false);
+      announceStatus(
+        body.spoken ?? `Added ${body.contact.displayName} to your contacts.`,
+        "neutral",
+      );
+      await loadContacts();
+    } catch {
+      const msg = "Unable to save contact. Please check your connection.";
+      setErrorMessage(msg);
+      announceStatus(msg, "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col pb-28">
-      <header className="flex items-center gap-3 py-2">
-        <Link
-          href="/home"
-          aria-label="Back to home"
-          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-divider bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
-        >
-          <ArrowLeft aria-hidden="true" className="h-5 w-5" />
-        </Link>
-        <div>
-          <h1 className="text-[28px] font-bold leading-tight text-text">
-            Contacts
-          </h1>
-          <p className="text-sm text-text-muted">
-            Saved recipients for sandbox voice payments (maximum 5)
-          </p>
+      <header className="flex items-center justify-between gap-3 py-2">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/home"
+            aria-label="Back to home"
+            className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-divider bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
+          >
+            <ArrowLeft aria-hidden="true" className="h-5 w-5" />
+          </Link>
+          <div>
+            <h1 className="text-[28px] font-bold leading-tight text-text">
+              Contacts
+            </h1>
+            <p className="text-sm text-text-muted">
+              Saved recipients for voice payments ({contacts.length} of 5 used)
+            </p>
+          </div>
         </div>
       </header>
 
@@ -113,7 +194,7 @@ export default function ContactsPage() {
                 No contacts saved yet
               </p>
               <p className="text-sm text-text-muted">
-                Saved contacts will appear here for voice test payments.
+                Add up to 5 allowed recipients below to send voice payments.
               </p>
             </div>
           ) : (
@@ -136,31 +217,102 @@ export default function ContactsPage() {
                       </p>
                       <p
                         data-testid="contact-masked-hint"
-                        className="num text-sm text-text-muted"
+                        className="num truncate text-sm text-text-muted"
                       >
                         {contact.maskedHint}
                       </p>
                     </div>
                   </div>
+
+                  <Link
+                    href={`/pay?contactId=${encodeURIComponent(contact.id)}&recipient=${encodeURIComponent(contact.displayName)}`}
+                    aria-label={`Pay ${contact.displayName}`}
+                    className="inline-flex min-h-[48px] shrink-0 items-center gap-1.5 rounded-full bg-surface-tint px-4 py-2 text-sm font-bold text-text no-underline hover:bg-peach"
+                  >
+                    <Send aria-hidden="true" className="h-4 w-4" />
+                    <span>Pay</span>
+                  </Link>
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          tabIndex={-1}
-          className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-full bg-surface-tint px-5 py-3 text-base font-bold text-text"
-        >
-          <UserPlus aria-hidden="true" className="h-5 w-5" />
-          <span>Add contact</span>
-          <span className="text-sm font-normal text-text-muted">
-            · Coming soon
-          </span>
-        </button>
+        {contacts.length < 5 && !showAddForm && (
+          <Button
+            type="button"
+            variant="primary"
+            icon={<UserPlus className="h-5 w-5" />}
+            onClick={() => setShowAddForm(true)}
+          >
+            Add contact
+          </Button>
+        )}
+
+        {showAddForm && (
+          <form
+            onSubmit={(e) => void handleCreateContact(e)}
+            className="flex flex-col gap-4 rounded-card border border-divider bg-surface p-5 shadow-card"
+          >
+            <h2 className="text-lg font-bold text-text">New recipient</h2>
+
+            <div>
+              <label
+                htmlFor={nameInputId}
+                className="block text-sm font-bold text-text"
+              >
+                Full name
+              </label>
+              <input
+                id={nameInputId}
+                type="text"
+                required
+                value={newDisplayName}
+                onChange={(e) => setNewDisplayName(e.target.value)}
+                placeholder="e.g. Ade Bello"
+                className="mt-1.5 min-h-[48px] w-full rounded-input border-2 border-input-border bg-bg px-4 py-2.5 text-base font-bold text-text"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor={emailInputId}
+                className="block text-sm font-bold text-text"
+              >
+                PayPal Sandbox email
+              </label>
+              <input
+                id={emailInputId}
+                type="email"
+                required
+                value={newSandboxEmail}
+                onChange={(e) => setNewSandboxEmail(e.target.value)}
+                placeholder="recipient@sandbox.paypal.com"
+                className="num mt-1.5 min-h-[48px] w-full rounded-input border-2 border-input-border bg-bg px-4 py-2.5 text-base font-bold text-text"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button
+                type="submit"
+                variant="primary"
+                loading={isSaving}
+                className="flex-1"
+              >
+                Save contact
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isSaving}
+                onClick={() => setShowAddForm(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        )}
       </main>
 
       <BottomTabBar activeTab="home" />
