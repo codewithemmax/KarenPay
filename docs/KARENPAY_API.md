@@ -162,3 +162,18 @@ sandbox business account. `send_money` is the only payment action in scope.
     - Verifies the entire chain via `verifyAuditChain` and returns `chainValid: true | false` alongside `events` and a `spoken` summary.
 - **Retry safety on `POST /api/v1/mandates/:id/approve`**:
   - Repeated approval calls on a `CONSUMED`, `PAID`, or `FAILED` mandate return the stored outcome immediately via `sendStoredOutcome` and never initiate a second PayPal sandbox payout.
+
+
+## Bulk Pay (Units B1–B8)
+
+### Additive Migration (`20261031000000_bulk_pay_schema_and_directory.sql`)
+- **`public.batches`**:
+  - Columns: `id` (`uuid`), `account_id` (`uuid` FK to `accounts`), `status` (`PARSED | PLANNED | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED | EXPIRED`), `plan_hash` (`text`), `total_minor` (`bigint >= 0`), `currency` (`text`), `created_at` (`timestamptz`), `expires_at` (`timestamptz`, default `now() + interval '10 minutes'`).
+- **`public.batch_items`**:
+  - Columns: `id` (`uuid`), `batch_id` (`uuid` FK to `batches`), `position` (`integer`, `0..4`), `pasted_name` (`text`), `resolved_name` (`text`), `bank_name` (`text`), `account_number` (`text`, `^[0-9]{10}$`), `status` (`MATCHED | NAME_MISMATCH | NOT_FOUND | DUPLICATE | SKIPPED | READY | ACTIVE | CONSUMED | PAID | FAILED | REJECTED | CANCELLED | EXPIRED`), `amount_minor` (`bigint > 0`), `mandate_id` (`uuid` FK to `mandates`).
+  - Trigger `enforce_batch_item_limit` enforces at most 5 items per batch.
+- **`public.sandbox_directory`**:
+  - Columns: `account_number` (`text`, `^[0-9]{10}$`), `bank_name` (`text`), `account_name` (`text`), `paypal_sandbox_email` (`text`), primary key `(account_number, bank_name)`.
+  - Seeded with 12 simulated Nigerian bank records mapped to `@sandbox.karenpay.test` PayPal sandbox emails.
+- **Limits Configuration (`apps/api/src/bulk/config.ts`)**:
+  - Reuses `MAX_AMOUNT_MINOR` (sandbox default `10000` = `$100.00` per transfer) and adds `MAX_BATCH_MINOR` (sandbox default `30000` = `$300.00` per batch).
