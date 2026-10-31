@@ -23,6 +23,7 @@ Update this file after every meaningful implementation change.
 * Bulk Pay (`feature/bulk-pay` branch):
   * **Unit B0** complete: Read-only discovery and integration map accepted.
   * **Unit B1** complete: Added `supabase/migrations/20261031000000_bulk_pay_schema_and_directory.sql` (`batches`, `batch_items`, `sandbox_directory` with 12 seeded simulated records), set `MAX_AMOUNT_MINOR=10000` and `MAX_BATCH_MINOR=30000` in `.env.example`, and added `loadBulkConfig` in `apps/api/src/bulk/config.ts`.
+  * **Unit B2** complete: Created `@karenpay/bulk` (`packages/bulk/src/index.ts`) with pure WhatsApp/bank recipient parser (newline, comma, dash, pipe separators, fields in any order, repeated pattern splitting), 24 Nigerian bank entries/aliases, 10-digit account validation, duplicate detection, 5-recipient batch cap, token-set name comparison (`"Name matches"` / `"Name differs"`), Gemini display-name sanitizer (`<= 60` chars or `"Recipient N"`), deterministic amount parser + dual amount check, RFC 8785 `computePlanHash`, and strict `zod` schemas for all 5 widget types (`recipient_list`, `name_check`, `plan`, `transfer_approval`, `batch_summary`), verified by `tests/unit/bulk-package.test.ts`.
 
 ## Completed
 * Unit 1: repo scaffold, Apache-2.0, SECURITY.md.
