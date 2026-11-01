@@ -23,9 +23,23 @@ interface AuditEventRecord {
   eventType: string;
   detail: {
     payeeName?: string;
+    recipientName?: string;
+    resolvedName?: string;
+    pastedName?: string;
+    bankName?: string;
+    accountLast4?: string;
+    batchId?: string;
+    itemId?: string;
+    planHash?: string;
+    decision?: string;
     amountMinor?: number;
+    totalMinor?: number;
+    paidMinor?: number;
+    recipientCount?: number;
+    itemCount?: number;
     currency?: string;
     payoutBatchId?: string;
+    paypalRef?: string;
     code?: string;
     reason?: string;
     mandateHash?: string;
@@ -56,15 +70,46 @@ function getApprovedStatusChip(eventType: string): {
   switch (eventType) {
     case "PAYMENT_SENT":
     case "MANDATE_CONSUMED":
+    case "BULK_ITEM_PAID":
+    case "BULK_BATCH_COMPLETED":
       return { label: "Test payment sent", isRejected: false };
     case "APPROVAL_REJECTED":
     case "MANDATE_REJECTED":
+    case "BULK_PARSE_REJECTED":
+    case "BULK_NAME_RESOLVE_REJECTED":
+    case "BULK_PLAN_REJECTED":
+    case "BULK_PLAN_CONFIRM_REJECTED":
+    case "BULK_ITEM_ACTIVATION_REJECTED":
+    case "BULK_NEXT_REJECTED":
+    case "BULK_MANDATE_FETCH_REJECTED":
+    case "BULK_ITEM_CANCEL_REJECTED":
+    case "BULK_CANCEL_REMAINING_REJECTED":
       return { label: "Rejected", isRejected: true };
     case "PAYMENT_FAILED":
+    case "BULK_ITEM_FAILED":
+    case "BULK_ITEM_CANCELLED":
+    case "BULK_ITEM_EXPIRED":
       return { label: "Not sent", isRejected: true };
     default:
       return { label: "Waiting for your approval", isRejected: false };
   }
+}
+
+function formatBulkAccountSuffix(detail: AuditEventRecord["detail"]): string {
+  if (!detail) return "";
+  const bank = typeof detail.bankName === "string" ? detail.bankName : "";
+  const last4 =
+    typeof detail.accountLast4 === "string" ? detail.accountLast4 : "";
+  if (bank && last4) {
+    return ` at ${bank} (account ending in last 4 digits ${last4})`;
+  }
+  if (bank) {
+    return ` at ${bank}`;
+  }
+  if (last4) {
+    return ` (account ending in last 4 digits ${last4})`;
+  }
+  return "";
 }
 
 function getEventTitle(event: AuditEventRecord): string {
@@ -72,6 +117,16 @@ function getEventTitle(event: AuditEventRecord): string {
     event.detail && typeof event.detail.payeeName === "string"
       ? event.detail.payeeName
       : null;
+  const bulkRecipient =
+    event.detail && typeof event.detail.recipientName === "string"
+      ? event.detail.recipientName
+      : event.detail && typeof event.detail.resolvedName === "string"
+        ? event.detail.resolvedName
+        : event.detail && typeof event.detail.pastedName === "string"
+          ? event.detail.pastedName
+          : null;
+  const suffix = formatBulkAccountSuffix(event.detail);
+
   switch (event.eventType) {
     case "PAYMENT_SENT":
       return payee ? `Test payment to ${payee}` : "Test payment sent";
@@ -82,6 +137,53 @@ function getEventTitle(event: AuditEventRecord): string {
     case "APPROVAL_REJECTED":
     case "MANDATE_REJECTED":
       return payee ? `Blocked payment to ${payee}` : "Blocked payment request";
+    case "BULK_BATCH_PARSED": {
+      const count =
+        typeof event.detail?.recipientCount === "number"
+          ? event.detail.recipientCount
+          : 0;
+      return `Bulk batch parsed (${count} ${count === 1 ? "recipient" : "recipients"})`;
+    }
+    case "BULK_PARSE_REJECTED":
+      return "Bulk recipient paste rejected";
+    case "BULK_NAME_RESOLVED":
+      return bulkRecipient
+        ? `Bulk name decision for ${bulkRecipient}${suffix}`
+        : `Bulk name decision${suffix}`;
+    case "BULK_NAME_RESOLVE_REJECTED":
+      return "Bulk name decision rejected";
+    case "BULK_PLAN_CREATED": {
+      const count =
+        typeof event.detail?.itemCount === "number"
+          ? event.detail.itemCount
+          : 0;
+      return `Bulk payment plan created (${count} ${count === 1 ? "item" : "items"})`;
+    }
+    case "BULK_PLAN_CONFIRMED":
+      return "Bulk payment plan confirmed";
+    case "BULK_PLAN_REJECTED":
+    case "BULK_PLAN_CONFIRM_REJECTED":
+      return "Bulk payment plan rejected";
+    case "BULK_ITEM_ACTIVATED":
+      return bulkRecipient
+        ? `Bulk transfer activated for ${bulkRecipient}${suffix}`
+        : `Bulk transfer activated${suffix}`;
+    case "BULK_ITEM_PAID":
+      return bulkRecipient
+        ? `Bulk test payment sent to ${bulkRecipient}${suffix}`
+        : "Bulk test payment sent";
+    case "BULK_ITEM_FAILED":
+      return bulkRecipient
+        ? `Bulk transfer not sent to ${bulkRecipient}${suffix}`
+        : "Bulk transfer not sent";
+    case "BULK_ITEM_CANCELLED":
+      return bulkRecipient
+        ? `Cancelled bulk transfer to ${bulkRecipient}${suffix}`
+        : `Cancelled bulk transfer${suffix}`;
+    case "BULK_ITEM_EXPIRED":
+      return "Bulk transfer approval expired";
+    case "BULK_BATCH_COMPLETED":
+      return "Bulk payment batch completed";
     default:
       return event.eventType.replace(/_/g, " ");
   }
@@ -287,7 +389,9 @@ export default function ActivityPage(): React.JSX.Element {
             const amountMinor =
               event.detail && typeof event.detail.amountMinor === "number"
                 ? event.detail.amountMinor
-                : null;
+                : event.detail && typeof event.detail.totalMinor === "number"
+                  ? event.detail.totalMinor
+                  : null;
             return (
               <li key={event.id}>
                 <button
@@ -307,7 +411,9 @@ export default function ActivityPage(): React.JSX.Element {
                       >
                         {chip.isRejected ? (
                           <XCircle className="h-5 w-5" />
-                        ) : event.eventType === "MANDATE_CREATED" ? (
+                        ) : event.eventType === "MANDATE_CREATED" ||
+                          event.eventType === "BULK_ITEM_ACTIVATED" ||
+                          event.eventType === "BULK_PLAN_CREATED" ? (
                           <Clock className="h-5 w-5" />
                         ) : (
                           <CheckCircle2 className="h-5 w-5" />
@@ -418,6 +524,48 @@ export default function ActivityPage(): React.JSX.Element {
                   {selectedEvent.mandateId ?? "N/A (Pre-mandate check)"}
                 </dd>
               </div>
+
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.batchId === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    batchId
+                  </dt>
+                  <dd
+                    data-testid="inspector-batch-id"
+                    className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
+                  >
+                    {selectedEvent.detail.batchId}
+                  </dd>
+                </div>
+              ) : null}
+
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.planHash === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    planHash
+                  </dt>
+                  <dd className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]">
+                    {selectedEvent.detail.planHash}
+                  </dd>
+                </div>
+              ) : null}
+
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.accountLast4 === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    accountLast4 (Simulated directory)
+                  </dt>
+                  <dd className="num mt-0.5 text-[15px] font-bold text-[var(--text)]">
+                    Ending in {selectedEvent.detail.accountLast4}
+                    {typeof selectedEvent.detail.bankName === "string"
+                      ? ` · ${selectedEvent.detail.bankName}`
+                      : ""}
+                  </dd>
+                </div>
+              ) : null}
 
               <div className="border-t border-[var(--divider)] pt-2.5">
                 <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">

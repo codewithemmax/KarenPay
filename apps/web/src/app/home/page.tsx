@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   History,
+  Layers,
   Mic,
   ShieldAlert,
   ShieldCheck,
@@ -52,7 +53,9 @@ function mapAuditEventToPreviewRow(event: AuditEventApiRow): ActivityPreviewRow 
   const recipientFromDetail =
     event.detail && typeof event.detail.payeeName === "string"
       ? event.detail.payeeName
-      : "Recipient";
+      : event.detail && typeof event.detail.recipientName === "string"
+        ? event.detail.recipientName
+        : "Recipient";
   const shortRef = event.hash ? event.hash.slice(0, 8) : event.id.slice(0, 8);
   const dateObj = new Date(event.createdAt);
   const dateLabel = Number.isNaN(dateObj.getTime())
@@ -85,7 +88,7 @@ function mapAuditEventToPreviewRow(event: AuditEventApiRow): ActivityPreviewRow 
     dateLabel,
     amountFormatted: formatMoneyMinor(detailAmount, { debit: detailAmount > 0 }),
     statusLabel:
-      event.eventType === "PAYMENT_SENT"
+      event.eventType === "PAYMENT_SENT" || event.eventType === "BULK_ITEM_PAID"
         ? "Test payment sent"
         : "Waiting for your approval",
     isBlocked: false,
@@ -439,6 +442,48 @@ export default function HomePage() {
                 <ShieldCheck aria-hidden="true" className="h-6 w-6" />
               </span>
               <span className="text-sm font-medium text-text">Security</span>
+            </Link>
+          </div>
+        </section>
+
+        {/* 3b. Bulk Pay Card */}
+        <section
+          aria-labelledby="bulk-pay-card-heading"
+          data-testid="home-bulk-pay-card"
+          className="rounded-card border border-divider bg-surface p-5 shadow-card"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-tint text-text"
+              >
+                <Layers aria-hidden="true" className="h-6 w-6" />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2
+                    id="bulk-pay-card-heading"
+                    className="text-[20px] font-bold text-text"
+                  >
+                    Bulk pay
+                  </h2>
+                  <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
+                    Simulated directory
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-text-muted">
+                  Paste up to 5 recipients from WhatsApp, set an amount, and
+                  approve each test payment one at a time with your passkey
+                  (fingerprint or face).
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/bulk"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-primary-hover"
+            >
+              Open Bulk pay
             </Link>
           </div>
         </section>
