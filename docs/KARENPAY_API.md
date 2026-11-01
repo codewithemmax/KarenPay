@@ -212,3 +212,22 @@ sandbox business account. `send_money` is the only payment action in scope.
   - **Behavior**:
     - Recomputes `computePlanHash` from the persisted batch items and verifies that it matches both the stored `planHash` and the client's submitted `planHash` (`409 PLAN_HASH_MISMATCH` with `BULK_PLAN_REJECTED` audit event on mismatch).
     - Transitions matched items to `READY` and batch `status` to `CONFIRMED`, appends `BULK_PLAN_CONFIRMED`, and returns the confirmed `plan` widget.
+
+### Queue Execution, Mandate Fetch, Fail-Closed Approve Hook & Cancellation (Unit B5)
+- `POST /api/v1/bulk/:batchId/next`
+  - **Authentication & Ownership**: Requires a valid signed `kp_session` cookie and verifies that `batchId` belongs to the caller.
+  - **Behavior**:
+    - Syncs any `ACTIVE` item's mandate status (marking expired `CREATED` mandates as `EXPIRED` and logging `BULK_ITEM_EXPIRED`).
+    - If an item is still `ACTIVE` with a valid `CREATED` mandate, returns its `{ type: "transfer_approval", mandateId }` widget idempotently.
+    - Otherwise selects the next `READY` item in `position` order, creates a mandate via `createAccountMandate` (`apps/api/src/mandates.ts`) with `payeeName = composeMandatePayeeName(item.resolved_name, item.bank_name)`, `payeeAccountNumber = item.account_number`, and `requestHash = sha256(instruction)` (120s TTL), updates the item to `ACTIVE`, logs `BULK_ITEM_ACTIVATED`, and returns `{ batchId, status: "IN_PROGRESS", activeItem, runningTotalMinor, totalMinor, currency, spoken, widgets: [{ type: "transfer_approval", mandateId }] }`.
+    - When all items reach terminal states, updates the batch to `COMPLETED`, logs `BULK_BATCH_COMPLETED`, and returns a `batch_summary` widget.
+- `GET /api/v1/bulk/:batchId/items/:itemId/mandate`
+  - **Authentication & Ownership**: Requires a valid signed `kp_session` cookie and verifies that `batchId` belongs to the caller, `itemId` belongs to `batchId`, and the item has an active `CREATED` mandate.
+  - **Response**: Returns `{ mandate (full MandateSchema object), mandateHash, approvalOptions (challenge === mandateHash), spoken, readoutRequired, state }` so the client can recompute `hashMandate(mandate) === mandateHash` before enabling approval.
+- `POST /api/v1/bulk/:batchId/items/:id/cancel` and `POST /api/v1/bulk/:batchId/cancel-remaining`
+  - Cancels pending items (`status = "CANCELLED"`, rejecting any underlying `CREATED` mandate, and appending one `BULK_ITEM_CANCELLED` audit event per cancelled item) while **never** touching any item that is `CONSUMED` or `PAID`.
+- `GET /api/v1/bulk/:batchId`
+  - Returns the current batch state, running total (`runningTotalMinor`), items (exposing only `accountLast4`), and active widget(s).
+- **Fail-Closed Bulk Receiver Resolution Hook (`createApproveBulkHook` in `apps/api/src/bulk/store.ts`)**:
+  - Wired into `createApproveRouter` (`apps/api/src/approve.ts`). Rejects 6-digit app PIN fallback on bulk mandates (`401 PIN_NOT_ALLOWED_FOR_BULK`).
+  - On WebAuthn passkey approval of a bulk mandate, requires `batch_items.mandate_id === mandate.id`, `batch_items.account_number === mandate.payee_account_number`, `composeMandatePayeeName(item.resolved_name, item.bank_name) === mandate.payee_name`, matching amount/currency, and an existing `sandbox_directory` record. Any mismatch marks outcome `FAILED`, makes **no PayPal call**, and appends a `PAYMENT_FAILED` audit event. Non-bulk mandates remain byte-for-byte identical.

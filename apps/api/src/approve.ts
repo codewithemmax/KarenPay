@@ -51,10 +51,63 @@ type CredentialRow = {
 
 type ContactRow = { paypal_sandbox_email: string };
 
+export type ApproveReceiverResolutionResult =
+  | { kind: "non_bulk" }
+  | {
+      kind: "bulk_resolved";
+      receiverEmail: string;
+      batchId: string;
+      itemId: string;
+    }
+  | {
+      kind: "bulk_failed";
+      reason: string;
+      batchId: string | null;
+      itemId: string | null;
+    };
+
+export interface ApproveBulkHook {
+  isBulkMandate?(
+    accountId: string,
+    mandate: {
+      id: string;
+      payee_contact_id: string | null;
+      payee_name?: string | null;
+      payee_account_number?: string | null;
+    },
+  ): Promise<boolean>;
+  resolveMandateReceiver(
+    accountId: string,
+    mandate: {
+      id: string;
+      payee_contact_id: string | null;
+      payee_name?: string | null;
+      payee_account_number?: string | null;
+      amount_minor: number;
+      currency: string;
+    },
+  ): Promise<ApproveReceiverResolutionResult>;
+  onBulkMandateConsumed?(
+    accountId: string,
+    batchId: string,
+    itemId: string,
+    mandateId: string,
+  ): Promise<void>;
+  onBulkMandateOutcome?(
+    accountId: string,
+    batchId: string,
+    itemId: string,
+    mandateId: string,
+    outcome: "PAID" | "FAILED",
+    paypalRef: string | null,
+  ): Promise<void>;
+}
+
 export interface ApproveConfig extends AuthConfig {
   paypalClientId: string;
   paypalClientSecret: string;
   paypalBaseUrl: string;
+  bulkHook?: ApproveBulkHook;
 }
 
 export function loadApproveConfig(
@@ -221,6 +274,18 @@ export function createApproveRouter(config: ApproveConfig): Router {
           });
         if (mandate.state !== "CREATED")
           return sendStoredOutcome(response, mandate);
+
+        if (await config.bulkHook?.isBulkMandate?.(accountId, mandate)) {
+          await store.audit(accountId, mandateId, "APPROVAL_REJECTED", {
+            code: "APPROVAL_REJECTED",
+            reason: "PIN_NOT_ALLOWED_FOR_BULK",
+          });
+          return response.status(401).json({
+            code: "APPROVAL_REJECTED",
+            message: "Passkey approval is required for bulk payments.",
+            spoken: "Passkey approval is required for bulk payments.",
+          });
+        }
 
         if (challenge !== mandate.mandate_hash) {
           await store.audit(accountId, mandateId, "APPROVAL_REJECTED", {
@@ -398,12 +463,45 @@ export function createApproveRouter(config: ApproveConfig): Router {
             });
       }
 
-      const recipient = consumed.payee_contact_id
-        ? await store.getContactEmail(accountId, consumed.payee_contact_id)
-        : consumed.payee_account_number
-          ? `acct-${consumed.payee_account_number}@sandbox.karenpay.test`
-          : undefined;
+      const bulkResolution = config.bulkHook
+        ? await config.bulkHook.resolveMandateReceiver(accountId, consumed)
+        : { kind: "non_bulk" as const };
+
+      if (bulkResolution.kind === "bulk_failed") {
+        await store.audit(accountId, mandateId, "MANDATE_CONSUMED", {
+          deviceType: verification.authenticationInfo.credentialDeviceType,
+          backedUp: verification.authenticationInfo.credentialBackedUp,
+        });
+        await store.setPaymentOutcome(accountId, mandateId, "FAILED", null);
+        await store.audit(accountId, mandateId, "PAYMENT_FAILED", {
+          reason: bulkResolution.reason,
+          ...(bulkResolution.batchId ? { batchId: bulkResolution.batchId } : {}),
+          ...(bulkResolution.itemId ? { itemId: bulkResolution.itemId } : {}),
+        });
+        return response.status(502).json({
+          code: "PAYMENT_FAILED",
+          message: "Test payment not sent.",
+          spoken: "Test payment not sent.",
+        });
+      }
+
+      const recipient =
+        bulkResolution.kind === "bulk_resolved"
+          ? bulkResolution.receiverEmail
+          : consumed.payee_contact_id
+            ? await store.getContactEmail(accountId, consumed.payee_contact_id)
+            : consumed.payee_account_number
+              ? `acct-${consumed.payee_account_number}@sandbox.karenpay.test`
+              : undefined;
       if (!recipient) throw new Error("Mandate recipient no longer exists");
+      if (bulkResolution.kind === "bulk_resolved") {
+        await config.bulkHook?.onBulkMandateConsumed?.(
+          accountId,
+          bulkResolution.batchId,
+          bulkResolution.itemId,
+          mandateId,
+        );
+      }
       await store.audit(accountId, mandateId, "MANDATE_CONSUMED", {
         deviceType: verification.authenticationInfo.credentialDeviceType,
         backedUp: verification.authenticationInfo.credentialBackedUp,
@@ -428,6 +526,16 @@ export function createApproveRouter(config: ApproveConfig): Router {
           "PAID",
           payout.payoutBatchId,
         );
+        if (bulkResolution.kind === "bulk_resolved") {
+          await config.bulkHook?.onBulkMandateOutcome?.(
+            accountId,
+            bulkResolution.batchId,
+            bulkResolution.itemId,
+            mandateId,
+            "PAID",
+            payout.payoutBatchId,
+          );
+        }
         await store.audit(accountId, mandateId, "PAYMENT_SENT", {
           payoutBatchId: payout.payoutBatchId,
         });
@@ -439,6 +547,16 @@ export function createApproveRouter(config: ApproveConfig): Router {
         });
       } catch {
         await store.setPaymentOutcome(accountId, mandateId, "FAILED", null);
+        if (bulkResolution.kind === "bulk_resolved") {
+          await config.bulkHook?.onBulkMandateOutcome?.(
+            accountId,
+            bulkResolution.batchId,
+            bulkResolution.itemId,
+            mandateId,
+            "FAILED",
+            null,
+          );
+        }
         await store.audit(accountId, mandateId, "PAYMENT_FAILED", {});
         return response.status(502).json({
           code: "PAYMENT_FAILED",

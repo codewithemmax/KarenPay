@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
 import express, { Router, type Express, type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { z } from "zod";
-import { createApproveRouter, loadApproveConfig } from "./approve.js";
+import { createApproveRouter, loadApproveConfig, type ApproveBulkHook, type ApproveConfig, type ApproveReceiverResolutionResult } from "./approve.js";
 import { appendAuditEvent, createAuditRouter } from "./audit.js";
 import { createAuthRouter, getAuthenticatedAccountId, loadAuthConfig, type AuthConfig } from "./auth.js";
-import { createMandateRouter, loadMandateConfig } from "./mandates.js";
+import { buildMandateApprovalOptions, createAccountMandate, createMandateRouter, loadMandateConfig } from "./mandates.js";
 import { createIntentRouter, loadIntentConfig } from "./intents.js";
-import { createBulkRouter, loadBulkConfig } from "./bulk/index.js";
+import { createApproveBulkHook, createBulkRouter, loadBulkConfig } from "./bulk/index.js";
 
-export { createApproveRouter, loadApproveConfig } from "./approve.js";
+export { createApproveRouter, loadApproveConfig, type ApproveBulkHook, type ApproveConfig, type ApproveReceiverResolutionResult } from "./approve.js";
 export { appendAuditEvent, createAuditRouter } from "./audit.js";
 export { createAuthRouter, loadAuthConfig } from "./auth.js";
-export { createMandateRouter, loadMandateConfig } from "./mandates.js";
+export { buildMandateApprovalOptions, createAccountMandate, createMandateRouter, loadMandateConfig } from "./mandates.js";
 export { createIntentRouter, loadIntentConfig, type GeminiIntentClient } from "./intents.js";
-export { createBulkRouter, loadBulkConfig, type BulkConfig } from "./bulk/index.js";
+export { createApproveBulkHook, createBulkRouter, loadBulkConfig, type BulkConfig } from "./bulk/index.js";
 export {
   PayPalApiError,
   PayPalClient,
@@ -176,6 +176,8 @@ export function createContactsRouter(config: AuthConfig): Router {
 export function createKarenPayApi(): Express {
   const app = express();
   const authConfig = loadAuthConfig();
+  const bulkConfig = loadBulkConfig();
+  const approveConfig = loadApproveConfig();
   app.use(createClientCorsMiddleware(authConfig.webOrigin));
   app.use(express.json({ limit: "32kb" }));
   app.get("/api/v1/health", (_request, response) => {
@@ -186,7 +188,10 @@ export function createKarenPayApi(): Express {
   app.use("/api/v1/audit", createAuditRouter(authConfig));
   app.use("/api/v1/mandates", createMandateRouter(loadMandateConfig()));
   app.use("/api/v1/intent", createIntentRouter(loadIntentConfig()));
-  app.use("/api/v1/mandates", createApproveRouter(loadApproveConfig()));
-  app.use("/api/v1/bulk", createBulkRouter(loadBulkConfig()));
+  app.use("/api/v1/mandates", createApproveRouter({
+    ...approveConfig,
+    bulkHook: createApproveBulkHook(bulkConfig),
+  }));
+  app.use("/api/v1/bulk", createBulkRouter(bulkConfig));
   return app;
 }
