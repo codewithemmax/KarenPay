@@ -177,3 +177,21 @@ sandbox business account. `send_money` is the only payment action in scope.
   - Seeded with 12 simulated Nigerian bank records mapped to `@sandbox.karenpay.test` PayPal sandbox emails.
 - **Limits Configuration (`apps/api/src/bulk/config.ts`)**:
   - Reuses `MAX_AMOUNT_MINOR` (sandbox default `10000` = `$100.00` per transfer) and adds `MAX_BATCH_MINOR` (sandbox default `30000` = `$300.00` per batch).
+
+### Parse & Name Resolution Endpoints (Unit B3)
+- `POST /api/v1/bulk/parse`
+  - **Authentication**: Requires a valid signed `kp_session` cookie (`401 AUTH_REQUIRED`).
+  - **Request body**: `{ "rawText": "0700000000\nCleva Bank,\nOlayinka Emmanuel" }`.
+  - **Behavior**:
+    - Deterministically parses up to 5 recipients (`422 TOO_MANY_RECIPIENTS` if > 5, `422 NO_VALID_RECIPIENTS` if none).
+    - Checks each `(account_number, bank_name)` against `public.sandbox_directory` and runs token-set name comparison (`compareRecipientNames`).
+    - Creates a `batches` row (`status = "PARSED"`, 10-minute TTL) and `batch_items` rows (`MATCHED`, `NAME_MISMATCH`, `NOT_FOUND`, `DUPLICATE`).
+    - Appends hash-chained audit event `BULK_BATCH_PARSED` (or `BULK_PARSE_REJECTED`).
+    - Returns `201 Created` with `{ batchId, status: "PARSED", spoken, widgets: [recipientListWidget, ...nameCheckWidgets] }`.
+- `POST /api/v1/bulk/items/:id/resolve-name`
+  - **Authentication & Ownership**: Requires a valid signed `kp_session` cookie and verifies that the item's batch belongs to the caller (`404 BATCH_ITEM_NOT_FOUND` otherwise).
+  - **Request body**: `{ "decision": "USE_DIRECTORY_NAME" | "SKIP" }`.
+  - **Behavior**:
+    - Updates a `NAME_MISMATCH` item to `MATCHED` (with `resolved_name = directory.account_name`) or `SKIPPED`.
+    - Appends hash-chained audit event `BULK_NAME_RESOLVED`.
+    - Returns `200 OK` with `{ batchId, itemId, decision, status, resolvedName, spoken, widgets }`.

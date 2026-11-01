@@ -1,0 +1,482 @@
+import { randomUUID } from "node:crypto";
+import { Router, type Request, type Response } from "express";
+import { z } from "zod";
+import {
+  NameCheckWidgetSchema,
+  RecipientListWidgetSchema,
+  compareRecipientNames,
+   parseBulkRecipients,
+  speakLast4Digits,
+  type BulkWidget,
+  type NameCheckWidget,
+  type RecipientListWidget,
+} from "../../../../packages/bulk/src/index.js";
+import { getAuthenticatedAccountId } from "../auth.js";
+import type { BulkConfig } from "./config.js";
+import {
+  SupabaseBulkStore,
+  type BatchItemRow,
+  type SandboxDirectoryRow,
+} from "./store.js";
+
+const parseRequestSchema = z
+  .object({
+    rawText: z.string().trim().min(1).max(4000).optional(),
+    text: z.string().trim().min(1).max(4000).optional(),
+  })
+  .strict()
+  .refine((data) => Boolean(data.rawText || data.text), {
+    message: "rawText is required",
+  });
+
+const resolveNameRequestSchema = z
+  .object({
+    decision: z.enum(["USE_DIRECTORY_NAME", "SKIP"]),
+  })
+  .strict();
+
+const itemIdParamSchema = z.string().uuid();
+
+function mapStatusToRecipientListLabel(
+  status: BatchItemRow["status"],
+): "Name matches" | "Name differs" | "Not in simulated directory" | "Duplicate account" | "Skipped" {
+  switch (status) {
+    case "MATCHED":
+    case "READY":
+      return "Name matches";
+    case "NAME_MISMATCH":
+      return "Name differs";
+    case "NOT_FOUND":
+      return "Not in simulated directory";
+    case "DUPLICATE":
+      return "Duplicate account";
+    case "SKIPPED":
+    default:
+      return "Skipped";
+  }
+}
+
+function buildParseAndResolveWidgets(
+  batchId: string,
+  items: readonly BatchItemRow[],
+  directoryMap: ReadonlyMap<string, SandboxDirectoryRow>,
+  unreadable: ReadonlyArray<{ rawText: string; reason: string }>,
+): { widgets: BulkWidget[]; spoken: string } {
+  const recipientListItems = items.map((item) => {
+    const normalizedStatus:
+      | "MATCHED"
+      | "NAME_MISMATCH"
+      | "NOT_FOUND"
+      | "DUPLICATE"
+      | "SKIPPED"
+      | "READY" =
+      item.status === "MATCHED" ||
+      item.status === "NAME_MISMATCH" ||
+      item.status === "NOT_FOUND" ||
+      item.status === "DUPLICATE" ||
+      item.status === "SKIPPED" ||
+      item.status === "READY"
+        ? item.status
+        : "SKIPPED";
+    return {
+      itemId: item.id,
+      position: item.position,
+      pastedName: item.pasted_name,
+      resolvedName: item.resolved_name,
+      bankName: item.bank_name,
+      accountLast4: item.account_number.slice(-4),
+      status: normalizedStatus,
+      statusLabel: mapStatusToRecipientListLabel(item.status),
+    };
+  });
+
+  const spokenParts: string[] = [];
+  for (const item of items) {
+    const last4Phrase = speakLast4Digits(item.account_number);
+    const label = mapStatusToRecipientListLabel(item.status);
+    const displayName = item.resolved_name ?? item.pasted_name;
+    spokenParts.push(
+      `${displayName} at ${item.bank_name}, ${last4Phrase}: ${label}.`,
+    );
+  }
+  if (unreadable.length > 0) {
+    spokenParts.push(
+      `${unreadable.length} ${unreadable.length === 1 ? "line was" : "lines were"} unreadable.`,
+    );
+  }
+
+  const listSpoken =
+    spokenParts.length > 0
+      ? `Parsed ${items.length} ${items.length === 1 ? "recipient" : "recipients"} against the simulated directory. ${spokenParts.join(" ")}`
+      : "No recipients parsed.";
+
+  const recipientListWidget: RecipientListWidget =
+    RecipientListWidgetSchema.parse({
+      type: "recipient_list",
+      batchId,
+      recipients: recipientListItems,
+      unreadable: [...unreadable],
+      spoken: listSpoken,
+    });
+
+  const nameCheckWidgets: NameCheckWidget[] = [];
+  for (const item of items) {
+    if (item.status === "NAME_MISMATCH") {
+      const dirKey = `${item.account_number}:${item.bank_name.toLowerCase()}`;
+      const dirRow = directoryMap.get(dirKey);
+      const directoryName = dirRow?.account_name ?? item.pasted_name;
+      const last4Phrase = speakLast4Digits(item.account_number);
+      const checkSpoken = `Name differs for ${item.bank_name}, ${last4Phrase}. You pasted ${item.pasted_name}, and the simulated directory lists ${directoryName}. Choose whether to use the simulated directory name or skip this recipient.`;
+      nameCheckWidgets.push(
+        NameCheckWidgetSchema.parse({
+          type: "name_check",
+          batchId,
+          itemId: item.id,
+          position: item.position,
+          pastedName: item.pasted_name,
+          directoryName,
+          bankName: item.bank_name,
+          accountLast4: item.account_number.slice(-4),
+          statusLabel: "Name differs",
+          choices: ["USE_DIRECTORY_NAME", "SKIP"],
+          spoken: checkSpoken,
+        }),
+      );
+    }
+  }
+
+  const combinedSpoken = [
+    recipientListWidget.spoken,
+    ...nameCheckWidgets.map((w) => w.spoken),
+  ].join(" ");
+
+  return {
+    widgets: [recipientListWidget, ...nameCheckWidgets],
+    spoken: combinedSpoken,
+  };
+}
+
+export function createBulkRouter(config: BulkConfig): Router {
+  const router = Router();
+  const store = new SupabaseBulkStore(config);
+
+  router.post("/parse", async (request: Request, response: Response) => {
+    const accountId = getAuthenticatedAccountId(request, config.sessionSecret);
+    if (!accountId) {
+      return response.status(401).json({
+        code: "AUTH_REQUIRED",
+        message: "Please sign in before creating a bulk test payment.",
+        spoken: "Please sign in before creating a bulk test payment.",
+      });
+    }
+
+    try {
+      const body = parseRequestSchema.parse(request.body);
+      const rawText = (body.rawText ?? body.text ?? "").trim();
+      const parsed = parseBulkRecipients(rawText);
+
+      if (parsed.errorCode === "TOO_MANY_RECIPIENTS") {
+        await store.audit(accountId, null, "BULK_PARSE_REJECTED", {
+          code: "TOO_MANY_RECIPIENTS",
+        });
+        return response.status(422).json({
+          code: "TOO_MANY_RECIPIENTS",
+          message: "You can include at most 5 recipients in one batch.",
+          spoken: "You can include at most 5 recipients in one batch.",
+        });
+      }
+
+      if (parsed.recipients.length === 0) {
+        const firstReason =
+          parsed.unreadable[0]?.reason ??
+          parsed.errorMessage ??
+          "Could not read any valid recipient with a 10-digit account number and bank name.";
+        await store.audit(accountId, null, "BULK_PARSE_REJECTED", {
+          code: "NO_VALID_RECIPIENTS",
+          unreadableCount: parsed.unreadable.length,
+        });
+        return response.status(422).json({
+          code: "NO_VALID_RECIPIENTS",
+          message: firstReason,
+          spoken: firstReason,
+          unreadable: parsed.unreadable,
+        });
+      }
+
+      const directoryRows = await store.getSandboxDirectory();
+      const directoryMap = new Map<string, SandboxDirectoryRow>();
+      for (const row of directoryRows) {
+        directoryMap.set(
+          `${row.account_number}:${row.bank_name.toLowerCase()}`,
+          row,
+        );
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(
+        now.getTime() + config.batchTtlSeconds * 1000,
+      );
+      const batchId = randomUUID();
+      const defaultCurrency =
+        config.paymentPolicy.allowedCurrencies[0] ?? "USD";
+
+      await store.createBatch({
+        id: batchId,
+        account_id: accountId,
+        status: "PARSED",
+        plan_hash: null,
+        total_minor: 0,
+        currency: defaultCurrency,
+        created_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+
+      const itemRows: BatchItemRow[] = parsed.recipients.map(
+        (candidate, position) => {
+          const dirKey = `${candidate.accountNumber}:${candidate.bankName.toLowerCase()}`;
+          const dirEntry = directoryMap.get(dirKey);
+
+          let status: BatchItemRow["status"];
+          let resolvedName: string | null = null;
+
+          if (candidate.isDuplicate) {
+            status = "DUPLICATE";
+          } else if (!dirEntry) {
+            status = "NOT_FOUND";
+          } else {
+            const cmp = compareRecipientNames(
+              candidate.pastedName,
+              dirEntry.account_name,
+            );
+            if (cmp.matched) {
+              status = "MATCHED";
+              resolvedName = dirEntry.account_name;
+            } else {
+              status = "NAME_MISMATCH";
+            }
+          }
+
+          return {
+            id: randomUUID(),
+            batch_id: batchId,
+            position,
+            pasted_name: candidate.pastedName,
+            resolved_name: resolvedName,
+            bank_name: candidate.bankName,
+            account_number: candidate.accountNumber,
+            status,
+            amount_minor: null,
+            mandate_id: null,
+          };
+        },
+      );
+
+      await store.createBatchItems(itemRows);
+
+      const { widgets, spoken } = buildParseAndResolveWidgets(
+        batchId,
+        itemRows,
+        directoryMap,
+        parsed.unreadable,
+      );
+
+      await store.audit(accountId, null, "BULK_BATCH_PARSED", {
+        batchId,
+        recipientCount: itemRows.length,
+        matchedCount: itemRows.filter((i) => i.status === "MATCHED").length,
+        mismatchCount: itemRows.filter((i) => i.status === "NAME_MISMATCH")
+          .length,
+        notFoundCount: itemRows.filter((i) => i.status === "NOT_FOUND").length,
+        duplicateCount: itemRows.filter((i) => i.status === "DUPLICATE").length,
+        unreadableCount: parsed.unreadable.length,
+      });
+
+      return response.status(201).json({
+        batchId,
+        status: "PARSED",
+        spoken,
+        widgets,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return response.status(400).json({
+          code: "INVALID_BULK_PARSE_REQUEST",
+          message: "Please paste recipient details to parse.",
+          spoken: "Please paste recipient details to parse.",
+        });
+      }
+      return response.status(500).json({
+        code: "BULK_PARSE_FAILED",
+        message: "The pasted recipients could not be processed.",
+        spoken: "The pasted recipients could not be processed.",
+      });
+    }
+  });
+
+  router.post(
+    "/items/:id/resolve-name",
+    async (request: Request, response: Response) => {
+      const accountId = getAuthenticatedAccountId(
+        request,
+        config.sessionSecret,
+      );
+      if (!accountId) {
+        return response.status(401).json({
+          code: "AUTH_REQUIRED",
+          message: "Please sign in before resolving a recipient name.",
+          spoken: "Please sign in before resolving a recipient name.",
+        });
+      }
+
+      try {
+        const itemId = itemIdParamSchema.parse(request.params.id);
+        const { decision } = resolveNameRequestSchema.parse(request.body);
+
+        const item = await store.getBatchItemById(itemId);
+        if (!item) {
+          await store.audit(accountId, null, "BULK_NAME_RESOLVE_REJECTED", {
+            itemId,
+            code: "BATCH_ITEM_NOT_FOUND",
+          });
+          return response.status(404).json({
+            code: "BATCH_ITEM_NOT_FOUND",
+            message: "This recipient item was not found.",
+            spoken: "This recipient item was not found.",
+          });
+        }
+
+        const batch = await store.getOwnedBatch(accountId, item.batch_id);
+        if (!batch) {
+          await store.audit(accountId, null, "BULK_NAME_RESOLVE_REJECTED", {
+            itemId,
+            batchId: item.batch_id,
+            code: "BATCH_ITEM_NOT_OWNED",
+          });
+          return response.status(404).json({
+            code: "BATCH_ITEM_NOT_FOUND",
+            message: "This recipient item was not found.",
+            spoken: "This recipient item was not found.",
+          });
+        }
+
+        if (new Date(batch.expires_at).getTime() <= Date.now()) {
+          await store.updateBatch(batch.id, { status: "EXPIRED" });
+          await store.audit(accountId, null, "BULK_NAME_RESOLVE_REJECTED", {
+            itemId,
+            batchId: batch.id,
+            code: "BATCH_EXPIRED",
+          });
+          return response.status(422).json({
+            code: "BATCH_EXPIRED",
+            message: "This bulk batch has expired. Please start a new batch.",
+            spoken: "This bulk batch has expired. Please start a new batch.",
+          });
+        }
+
+        if (batch.status !== "PARSED") {
+          await store.audit(accountId, null, "BULK_NAME_RESOLVE_REJECTED", {
+            itemId,
+            batchId: batch.id,
+            code: "BATCH_NOT_EDITABLE",
+          });
+          return response.status(422).json({
+            code: "BATCH_NOT_EDITABLE",
+            message: "Recipient names cannot be changed after a plan is confirmed.",
+            spoken: "Recipient names cannot be changed after a plan is confirmed.",
+          });
+        }
+
+        if (item.status !== "NAME_MISMATCH") {
+          await store.audit(accountId, null, "BULK_NAME_RESOLVE_REJECTED", {
+            itemId,
+            batchId: batch.id,
+            code: "ITEM_NOT_MISMATCHED",
+          });
+          return response.status(422).json({
+            code: "ITEM_NOT_MISMATCHED",
+            message: "This recipient does not have a pending name check.",
+            spoken: "This recipient does not have a pending name check.",
+          });
+        }
+
+        const directoryRows = await store.getSandboxDirectory();
+        const directoryMap = new Map<string, SandboxDirectoryRow>();
+        for (const row of directoryRows) {
+          directoryMap.set(
+            `${row.account_number}:${row.bank_name.toLowerCase()}`,
+            row,
+          );
+        }
+
+        const dirKey = `${item.account_number}:${item.bank_name.toLowerCase()}`;
+        const dirEntry = directoryMap.get(dirKey);
+        if (!dirEntry) {
+          return response.status(422).json({
+            code: "DIRECTORY_ENTRY_MISSING",
+            message: "This recipient is not in the simulated directory.",
+            spoken: "This recipient is not in the simulated directory.",
+          });
+        }
+
+        const nextStatus: BatchItemRow["status"] =
+          decision === "USE_DIRECTORY_NAME" ? "MATCHED" : "SKIPPED";
+        const nextResolvedName =
+          decision === "USE_DIRECTORY_NAME" ? dirEntry.account_name : null;
+
+        await store.updateBatchItem(itemId, {
+          status: nextStatus,
+          resolved_name: nextResolvedName,
+        });
+
+        await store.audit(accountId, null, "BULK_NAME_RESOLVED", {
+          batchId: batch.id,
+          itemId,
+          decision,
+          pastedName: item.pasted_name,
+          resolvedName: nextResolvedName,
+          bankName: item.bank_name,
+          accountLast4: item.account_number.slice(-4),
+        });
+
+        const updatedItems = await store.getBatchItems(batch.id);
+        const { widgets } = buildParseAndResolveWidgets(
+          batch.id,
+          updatedItems,
+          directoryMap,
+          [],
+        );
+
+        const last4Phrase = speakLast4Digits(item.account_number);
+        const actionSpoken =
+          decision === "USE_DIRECTORY_NAME"
+            ? `Updated recipient to simulated directory name ${dirEntry.account_name} at ${item.bank_name}, ${last4Phrase}.`
+            : `Skipped ${item.pasted_name} at ${item.bank_name}, ${last4Phrase}.`;
+
+        return response.json({
+          batchId: batch.id,
+          itemId,
+          decision,
+          status: nextStatus,
+          resolvedName: nextResolvedName,
+          spoken: actionSpoken,
+          widgets,
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return response.status(400).json({
+            code: "INVALID_RESOLVE_NAME_REQUEST",
+            message: "Please choose to use the simulated directory name or skip this recipient.",
+            spoken: "Please choose to use the simulated directory name or skip this recipient.",
+          });
+        }
+        return response.status(500).json({
+          code: "BULK_RESOLVE_NAME_FAILED",
+          message: "The recipient name choice could not be saved.",
+          spoken: "The recipient name choice could not be saved.",
+        });
+      }
+    },
+  );
+
+  return router;
+}

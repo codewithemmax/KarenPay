@@ -6,12 +6,14 @@ import { appendAuditEvent, createAuditRouter } from "./audit.js";
 import { createAuthRouter, getAuthenticatedAccountId, loadAuthConfig, type AuthConfig } from "./auth.js";
 import { createMandateRouter, loadMandateConfig } from "./mandates.js";
 import { createIntentRouter, loadIntentConfig } from "./intents.js";
+import { createBulkRouter, loadBulkConfig } from "./bulk/index.js";
 
 export { createApproveRouter, loadApproveConfig } from "./approve.js";
 export { appendAuditEvent, createAuditRouter } from "./audit.js";
 export { createAuthRouter, loadAuthConfig } from "./auth.js";
 export { createMandateRouter, loadMandateConfig } from "./mandates.js";
 export { createIntentRouter, loadIntentConfig, type GeminiIntentClient } from "./intents.js";
+export { createBulkRouter, loadBulkConfig, type BulkConfig } from "./bulk/index.js";
 export {
   PayPalApiError,
   PayPalClient,
@@ -185,5 +187,6 @@ export function createKarenPayApi(): Express {
   app.use("/api/v1/mandates", createMandateRouter(loadMandateConfig()));
   app.use("/api/v1/intent", createIntentRouter(loadIntentConfig()));
   app.use("/api/v1/mandates", createApproveRouter(loadApproveConfig()));
+  app.use("/api/v1/bulk", createBulkRouter(loadBulkConfig()));
   return app;
 }
