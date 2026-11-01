@@ -1,21 +1,32 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import {
   NameCheckWidgetSchema,
+  PlanWidgetSchema,
   RecipientListWidgetSchema,
   compareRecipientNames,
-   parseBulkRecipients,
+  computePlanHash,
+  parseBulkRecipients,
+  sanitizeDisplayNameForGemini,
   speakLast4Digits,
+  verifyDualAmountCheck,
   type BulkWidget,
   type NameCheckWidget,
+  type PlanWidget,
   type RecipientListWidget,
 } from "../../../../packages/bulk/src/index.js";
 import { getAuthenticatedAccountId } from "../auth.js";
 import type { BulkConfig } from "./config.js";
 import {
+  GoogleBulkGeminiPlannerClient,
+  geminiBulkPlanOutputSchema,
+  type BulkGeminiPlannerClient,
+} from "./planner.js";
+import {
   SupabaseBulkStore,
   type BatchItemRow,
+  type BatchRow,
   type SandboxDirectoryRow,
 } from "./store.js";
 
@@ -35,11 +46,57 @@ const resolveNameRequestSchema = z
   })
   .strict();
 
-const itemIdParamSchema = z.string().uuid();
+const planRequestSchema = z
+  .object({
+    instruction: z.string().trim().min(1).max(1000),
+  })
+  .strict();
+
+const confirmPlanRequestSchema = z
+  .object({
+    planHash: z.string().min(1).max(256).optional(),
+    requestHash: z.string().min(1).max(256).optional(),
+  })
+  .strict();
+
+const uuidParamSchema = z.string().uuid();
+
+function formatUsdDollars(amountMinor: number): string {
+  const whole = Math.floor(amountMinor / 100);
+  const cents = String(amountMinor % 100).padStart(2, "0");
+  return `$${whole}.${cents}`;
+}
+
+export function encodeStoredPlanHashes(
+  planHash: string,
+  requestHash: string,
+): string {
+  return `${planHash}.${requestHash}`;
+}
+
+export function decodeStoredPlanHashes(stored: string | null): {
+  planHash: string | null;
+  requestHash: string | null;
+} {
+  if (!stored) return { planHash: null, requestHash: null };
+  const dotIdx = stored.indexOf(".");
+  if (dotIdx === -1) {
+    return { planHash: stored, requestHash: null };
+  }
+  return {
+    planHash: stored.slice(0, dotIdx),
+    requestHash: stored.slice(dotIdx + 1) || null,
+  };
+}
 
 function mapStatusToRecipientListLabel(
   status: BatchItemRow["status"],
-): "Name matches" | "Name differs" | "Not in simulated directory" | "Duplicate account" | "Skipped" {
+):
+  | "Name matches"
+  | "Name differs"
+  | "Not in simulated directory"
+  | "Duplicate account"
+  | "Skipped" {
   switch (status) {
     case "MATCHED":
     case "READY":
@@ -156,7 +213,62 @@ function buildParseAndResolveWidgets(
   };
 }
 
-export function createBulkRouter(config: BulkConfig): Router {
+export function buildPlanWidgetFromRows(
+  batch: BatchRow,
+  readyItems: readonly BatchItemRow[],
+  planHash: string,
+  requestHash: string,
+  status: "PLANNED" | "CONFIRMED",
+): PlanWidget {
+  const totalMinor = readyItems.reduce(
+    (sum, item) => sum + (item.amount_minor ?? 0),
+    0,
+  );
+  const itemSpoken = readyItems
+    .map((item) => {
+      const name = item.resolved_name ?? item.pasted_name;
+      return `${formatUsdDollars(item.amount_minor ?? 0)} to ${name} at ${item.bank_name}, ${speakLast4Digits(item.account_number)}`;
+    })
+    .join("; ");
+
+  const spoken =
+    status === "PLANNED"
+      ? `Bulk plan ready for ${readyItems.length} ${readyItems.length === 1 ? "recipient" : "recipients"}, total ${formatUsdDollars(totalMinor)}: ${itemSpoken}. Confirm the plan to begin individual passkey approvals.`
+      : `Plan confirmed for ${readyItems.length} ${readyItems.length === 1 ? "recipient" : "recipients"}, total ${formatUsdDollars(totalMinor)}. Each transfer will be read aloud and approved one at a time with your fingerprint or face.`;
+
+  return PlanWidgetSchema.parse({
+    type: "plan",
+    batchId: batch.id,
+    status,
+    planHash,
+    requestHash,
+    totalMinor,
+    currency: batch.currency,
+    expiresAt: new Date(batch.expires_at).toISOString(),
+    items: readyItems.map((item) => ({
+      itemId: item.id,
+      position: item.position,
+      recipientName: item.resolved_name ?? item.pasted_name,
+      bankName: item.bank_name,
+      accountLast4: item.account_number.slice(-4),
+      amountMinor: item.amount_minor ?? 0,
+      currency: batch.currency,
+      statusLabel:
+        status === "CONFIRMED"
+          ? "Waiting for your approval"
+          : "Name matches",
+    })),
+    spoken,
+  });
+}
+
+export function createBulkRouter(
+  config: BulkConfig,
+  plannerClient: BulkGeminiPlannerClient = new GoogleBulkGeminiPlannerClient(
+    config.geminiApiKey,
+    config.geminiModel,
+  ),
+): Router {
   const router = Router();
   const store = new SupabaseBulkStore(config);
 
@@ -329,7 +441,7 @@ export function createBulkRouter(config: BulkConfig): Router {
       }
 
       try {
-        const itemId = itemIdParamSchema.parse(request.params.id);
+        const itemId = uuidParamSchema.parse(request.params.id);
         const { decision } = resolveNameRequestSchema.parse(request.body);
 
         const item = await store.getBatchItemById(itemId);
@@ -381,8 +493,10 @@ export function createBulkRouter(config: BulkConfig): Router {
           });
           return response.status(422).json({
             code: "BATCH_NOT_EDITABLE",
-            message: "Recipient names cannot be changed after a plan is confirmed.",
-            spoken: "Recipient names cannot be changed after a plan is confirmed.",
+            message:
+              "Recipient names cannot be changed after a plan is confirmed.",
+            spoken:
+              "Recipient names cannot be changed after a plan is confirmed.",
           });
         }
 
@@ -465,14 +579,488 @@ export function createBulkRouter(config: BulkConfig): Router {
         if (error instanceof z.ZodError) {
           return response.status(400).json({
             code: "INVALID_RESOLVE_NAME_REQUEST",
-            message: "Please choose to use the simulated directory name or skip this recipient.",
-            spoken: "Please choose to use the simulated directory name or skip this recipient.",
+            message:
+              "Please choose to use the simulated directory name or skip this recipient.",
+            spoken:
+              "Please choose to use the simulated directory name or skip this recipient.",
           });
         }
         return response.status(500).json({
           code: "BULK_RESOLVE_NAME_FAILED",
           message: "The recipient name choice could not be saved.",
           spoken: "The recipient name choice could not be saved.",
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/:batchId/plan",
+    async (request: Request, response: Response) => {
+      const accountId = getAuthenticatedAccountId(
+        request,
+        config.sessionSecret,
+      );
+      if (!accountId) {
+        return response.status(401).json({
+          code: "AUTH_REQUIRED",
+          message: "Please sign in before planning a bulk test payment.",
+          spoken: "Please sign in before planning a bulk test payment.",
+        });
+      }
+
+      try {
+        const batchId = uuidParamSchema.parse(request.params.batchId);
+        const { instruction } = planRequestSchema.parse(request.body);
+
+        const batch = await store.getOwnedBatch(accountId, batchId);
+        if (!batch) {
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId,
+            code: "BATCH_NOT_FOUND",
+          });
+          return response.status(404).json({
+            code: "BATCH_NOT_FOUND",
+            message: "This bulk batch was not found.",
+            spoken: "This bulk batch was not found.",
+          });
+        }
+
+        if (new Date(batch.expires_at).getTime() <= Date.now()) {
+          await store.updateBatch(batch.id, { status: "EXPIRED" });
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: "BATCH_EXPIRED",
+          });
+          return response.status(422).json({
+            code: "BATCH_EXPIRED",
+            message: "This bulk batch has expired. Please start a new batch.",
+            spoken: "This bulk batch has expired. Please start a new batch.",
+          });
+        }
+
+        if (batch.status !== "PARSED" && batch.status !== "PLANNED") {
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: "BATCH_ALREADY_CONFIRMED",
+          });
+          return response.status(422).json({
+            code: "BATCH_ALREADY_CONFIRMED",
+            message: "This batch plan has already been confirmed.",
+            spoken: "This batch plan has already been confirmed.",
+          });
+        }
+
+        const allItems = await store.getBatchItems(batch.id);
+        const hasPendingMismatch = allItems.some(
+          (i) => i.status === "NAME_MISMATCH",
+        );
+        if (hasPendingMismatch) {
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: "UNRESOLVED_NAME_MISMATCH",
+          });
+          return response.status(422).json({
+            code: "UNRESOLVED_NAME_MISMATCH",
+            message:
+              "Please resolve all recipient name checks before setting an amount.",
+            spoken:
+              "Please resolve all recipient name checks before setting an amount.",
+          });
+        }
+
+        const payableItems = allItems.filter(
+          (i) => i.status === "MATCHED" || i.status === "READY",
+        );
+        if (payableItems.length === 0) {
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: "NO_PAYABLE_RECIPIENTS",
+          });
+          return response.status(422).json({
+            code: "NO_PAYABLE_RECIPIENTS",
+            message:
+              "No payable recipients remain in this batch. Paste recipients in the simulated directory to continue.",
+            spoken:
+              "No payable recipients remain in this batch. Paste recipients in the simulated directory to continue.",
+          });
+        }
+
+        // Decision 7: Sanitize display names before passing to Gemini
+        const geminiRecipients = payableItems.map((item, idx) => ({
+          recipientId: item.id,
+          displayName: sanitizeDisplayNameForGemini(
+            item.resolved_name ?? item.pasted_name,
+            idx + 1,
+          ),
+        }));
+
+        const rawModelOutput = await plannerClient.planAmounts(
+          instruction,
+          geminiRecipients,
+        );
+        const modelPlan = geminiBulkPlanOutputSchema.parse(rawModelOutput);
+
+        if (
+          modelPlan.needsClarification ||
+          modelPlan.items.length !== payableItems.length
+        ) {
+          const msg =
+            "Please restate the amount clearly, for example 25 dollars each.";
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: "CLARIFICATION_REQUIRED",
+          });
+          return response.status(422).json({
+            code: "CLARIFICATION_REQUIRED",
+            message: msg,
+            spoken: msg,
+          });
+        }
+
+        const amountByItemId = new Map<string, number>();
+        for (const planned of modelPlan.items) {
+          amountByItemId.set(planned.recipientId, planned.amountMinor);
+        }
+
+        // Verify every payable item received an amount
+        for (const item of payableItems) {
+          if (!amountByItemId.has(item.id)) {
+            const msg =
+              "Please restate the amount clearly for each recipient.";
+            await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+              batchId: batch.id,
+              code: "INCOMPLETE_PLAN_AMOUNTS",
+            });
+            return response.status(422).json({
+              code: "INCOMPLETE_PLAN_AMOUNTS",
+              message: msg,
+              spoken: msg,
+            });
+          }
+        }
+
+        const proposedAmounts = payableItems.map(
+          (item) => amountByItemId.get(item.id)!,
+        );
+
+        // Rule 10: Dual amount check (Gemini output vs deterministic parser)
+        const dualCheck = verifyDualAmountCheck(instruction, proposedAmounts);
+        if (!dualCheck.accepted) {
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: dualCheck.code,
+          });
+          return response.status(422).json({
+            code: dualCheck.code,
+            message: dualCheck.spoken,
+            spoken: dualCheck.spoken,
+          });
+        }
+
+        // Rule 14: Check per-transfer limit (MAX_AMOUNT_MINOR)
+        const maxSingleMinor = config.paymentPolicy.maximumAmountMinor;
+        const overSingle = proposedAmounts.find((amt) => amt > maxSingleMinor);
+        if (overSingle !== undefined) {
+          const limitFormatted = formatUsdDollars(maxSingleMinor);
+          const msg = `Amount ${formatUsdDollars(overSingle)} exceeds the ${limitFormatted} per-transfer limit. Please choose an amount up to ${limitFormatted}.`;
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: "AMOUNT_EXCEEDS_POLICY",
+            attemptedMinor: overSingle,
+            maxAmountMinor: maxSingleMinor,
+          });
+          return response.status(422).json({
+            code: "AMOUNT_EXCEEDS_POLICY",
+            message: msg,
+            spoken: msg,
+          });
+        }
+
+        // Rule 14: Check batch total limit (MAX_BATCH_MINOR)
+        const totalMinor = proposedAmounts.reduce((sum, amt) => sum + amt, 0);
+        if (totalMinor > config.maxBatchMinor) {
+          const batchLimitFormatted = formatUsdDollars(config.maxBatchMinor);
+          const msg = `Total batch amount of ${formatUsdDollars(totalMinor)} exceeds the ${batchLimitFormatted} batch limit. Please reduce the amount or number of recipients.`;
+          await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
+            batchId: batch.id,
+            code: "BATCH_TOTAL_EXCEEDS_LIMIT",
+            totalMinor,
+            maxBatchMinor: config.maxBatchMinor,
+          });
+          return response.status(422).json({
+            code: "BATCH_TOTAL_EXCEEDS_LIMIT",
+            message: msg,
+            spoken: msg,
+          });
+        }
+
+        // Persist planned amounts on payable items
+        const updatedPayable: BatchItemRow[] = [];
+        for (const item of payableItems) {
+          const amt = amountByItemId.get(item.id)!;
+          await store.updateBatchItem(item.id, {
+            amount_minor: amt,
+            status: "READY",
+          });
+          updatedPayable.push({
+            ...item,
+            amount_minor: amt,
+            status: "READY",
+          });
+        }
+
+        const requestHash = createHash("sha256")
+          .update(instruction.trim(), "utf8")
+          .digest("base64url");
+
+        const planHash = computePlanHash({
+          batchId: batch.id,
+          accountId,
+          currency: batch.currency,
+          totalMinor,
+          requestHash,
+          items: updatedPayable.map((item) => ({
+            itemId: item.id,
+            position: item.position,
+            accountNumber: item.account_number,
+            bankName: item.bank_name,
+            resolvedName: item.resolved_name ?? item.pasted_name,
+            amountMinor: item.amount_minor!,
+          })),
+        });
+
+        await store.updateBatch(batch.id, {
+          status: "PLANNED",
+          plan_hash: encodeStoredPlanHashes(planHash, requestHash),
+          total_minor: totalMinor,
+        });
+
+        const planWidget = buildPlanWidgetFromRows(
+          { ...batch, status: "PLANNED", total_minor: totalMinor },
+          updatedPayable,
+          planHash,
+          requestHash,
+          "PLANNED",
+        );
+
+        await store.audit(accountId, null, "BULK_PLAN_CREATED", {
+          batchId: batch.id,
+          planHash,
+          requestHash,
+          totalMinor,
+          currency: batch.currency,
+          itemCount: updatedPayable.length,
+        });
+
+        return response.json({
+          batchId: batch.id,
+          status: "PLANNED",
+          planHash,
+          requestHash,
+          totalMinor,
+          currency: batch.currency,
+          spoken: planWidget.spoken,
+          widgets: [planWidget],
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return response.status(422).json({
+            code: "INVALID_PLAN_REQUEST",
+            message:
+              "Please state the amount for your recipients, for example 25 dollars each.",
+            spoken:
+              "Please state the amount for your recipients, for example 25 dollars each.",
+          });
+        }
+        return response.status(502).json({
+          code: "BULK_PLAN_UNAVAILABLE",
+          message:
+            "The amount instruction could not be processed. Please try again.",
+          spoken:
+            "The amount instruction could not be processed. Please try again.",
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/:batchId/confirm-plan",
+    async (request: Request, response: Response) => {
+      const accountId = getAuthenticatedAccountId(
+        request,
+        config.sessionSecret,
+      );
+      if (!accountId) {
+        return response.status(401).json({
+          code: "AUTH_REQUIRED",
+          message: "Please sign in before confirming a bulk payment plan.",
+          spoken: "Please sign in before confirming a bulk payment plan.",
+        });
+      }
+
+      try {
+        const batchId = uuidParamSchema.parse(request.params.batchId);
+        const body = confirmPlanRequestSchema.parse(request.body ?? {});
+
+        const batch = await store.getOwnedBatch(accountId, batchId);
+        if (!batch) {
+          await store.audit(accountId, null, "BULK_PLAN_CONFIRM_REJECTED", {
+            batchId,
+            code: "BATCH_NOT_FOUND",
+          });
+          return response.status(404).json({
+            code: "BATCH_NOT_FOUND",
+            message: "This bulk batch was not found.",
+            spoken: "This bulk batch was not found.",
+          });
+        }
+
+        if (new Date(batch.expires_at).getTime() <= Date.now()) {
+          await store.updateBatch(batch.id, { status: "EXPIRED" });
+          await store.audit(accountId, null, "BULK_PLAN_CONFIRM_REJECTED", {
+            batchId: batch.id,
+            code: "BATCH_EXPIRED",
+          });
+          return response.status(422).json({
+            code: "BATCH_EXPIRED",
+            message: "This bulk plan has expired. Please start a new batch.",
+            spoken: "This bulk plan has expired. Please start a new batch.",
+          });
+        }
+
+        if (batch.status !== "PLANNED") {
+          await store.audit(accountId, null, "BULK_PLAN_CONFIRM_REJECTED", {
+            batchId: batch.id,
+            code: "BATCH_NOT_IN_PLANNED_STATE",
+          });
+          return response.status(422).json({
+            code: "BATCH_NOT_IN_PLANNED_STATE",
+            message: "Create a payment plan before confirming.",
+            spoken: "Create a payment plan before confirming.",
+          });
+        }
+
+        const { planHash: storedPlanHash, requestHash: storedRequestHash } =
+          decodeStoredPlanHashes(batch.plan_hash);
+        const effectiveRequestHash = body.requestHash ?? storedRequestHash;
+
+        if (!storedPlanHash || !effectiveRequestHash) {
+          await store.audit(accountId, null, "BULK_PLAN_CONFIRM_REJECTED", {
+            batchId: batch.id,
+            code: "MISSING_PLAN_HASH",
+          });
+          return response.status(422).json({
+            code: "PLAN_HASH_MISMATCH",
+            message: "The payment plan could not be confirmed.",
+            spoken: "The payment plan could not be confirmed.",
+          });
+        }
+
+        const allItems = await store.getBatchItems(batch.id);
+        const readyItems = allItems.filter((i) => i.status === "READY");
+        if (
+          readyItems.length === 0 ||
+          readyItems.some(
+            (i) =>
+              typeof i.amount_minor !== "number" ||
+              i.amount_minor <= 0 ||
+              !i.resolved_name,
+          )
+        ) {
+          await store.audit(accountId, null, "BULK_PLAN_CONFIRM_REJECTED", {
+            batchId: batch.id,
+            code: "INVALID_READY_ITEMS",
+          });
+          return response.status(422).json({
+            code: "PLAN_HASH_MISMATCH",
+            message: "The payment plan items were modified and cannot be confirmed.",
+            spoken: "The payment plan items were modified and cannot be confirmed.",
+          });
+        }
+
+        const recomputedTotal = readyItems.reduce(
+          (sum, i) => sum + (i.amount_minor ?? 0),
+          0,
+        );
+        const recomputedPlanHash = computePlanHash({
+          batchId: batch.id,
+          accountId,
+          currency: batch.currency,
+          totalMinor: recomputedTotal,
+          requestHash: effectiveRequestHash,
+          items: readyItems.map((item) => ({
+            itemId: item.id,
+            position: item.position,
+            accountNumber: item.account_number,
+            bankName: item.bank_name,
+            resolvedName: item.resolved_name!,
+            amountMinor: item.amount_minor!,
+          })),
+        });
+
+        if (
+          recomputedPlanHash !== storedPlanHash ||
+          recomputedTotal !== Number(batch.total_minor) ||
+          (body.planHash && body.planHash !== storedPlanHash) ||
+          (body.requestHash &&
+            storedRequestHash &&
+            body.requestHash !== storedRequestHash)
+        ) {
+          await store.audit(accountId, null, "BULK_PLAN_CONFIRM_REJECTED", {
+            batchId: batch.id,
+            code: "PLAN_HASH_MISMATCH",
+          });
+          return response.status(422).json({
+            code: "PLAN_HASH_MISMATCH",
+            message:
+              "The payment plan was altered after creation and has been rejected.",
+            spoken:
+              "The payment plan was altered after creation and has been rejected.",
+          });
+        }
+
+        await store.updateBatch(batch.id, { status: "CONFIRMED" });
+
+        const confirmedWidget = buildPlanWidgetFromRows(
+          { ...batch, status: "CONFIRMED" },
+          readyItems,
+          storedPlanHash,
+          effectiveRequestHash,
+          "CONFIRMED",
+        );
+
+        await store.audit(accountId, null, "BULK_PLAN_CONFIRMED", {
+          batchId: batch.id,
+          planHash: storedPlanHash,
+          requestHash: effectiveRequestHash,
+          totalMinor: recomputedTotal,
+          currency: batch.currency,
+          itemCount: readyItems.length,
+        });
+
+        return response.json({
+          batchId: batch.id,
+          status: "CONFIRMED",
+          planHash: storedPlanHash,
+          requestHash: effectiveRequestHash,
+          totalMinor: recomputedTotal,
+          currency: batch.currency,
+          spoken: confirmedWidget.spoken,
+          widgets: [confirmedWidget],
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return response.status(400).json({
+            code: "INVALID_CONFIRM_PLAN_REQUEST",
+            message: "The plan confirmation request is invalid.",
+            spoken: "The plan confirmation request is invalid.",
+          });
+        }
+        return response.status(500).json({
+          code: "BULK_CONFIRM_PLAN_FAILED",
+          message: "The payment plan could not be confirmed.",
+          spoken: "The payment plan could not be confirmed.",
         });
       }
     },

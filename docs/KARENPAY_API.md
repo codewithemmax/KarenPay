@@ -195,3 +195,20 @@ sandbox business account. `send_money` is the only payment action in scope.
     - Updates a `NAME_MISMATCH` item to `MATCHED` (with `resolved_name = directory.account_name`) or `SKIPPED`.
     - Appends hash-chained audit event `BULK_NAME_RESOLVED`.
     - Returns `200 OK` with `{ batchId, itemId, decision, status, resolvedName, spoken, widgets }`.
+
+### Plan & Confirm-Plan Endpoints (Unit B4)
+- `POST /api/v1/bulk/:batchId/plan`
+  - **Authentication & Ownership**: Requires a valid signed `kp_session` cookie and verifies that `batchId` belongs to the caller (`404 BATCH_NOT_FOUND` otherwise).
+  - **Request body**: `{ "instruction": "25 each" }`.
+  - **Behavior**:
+    - Rejects if any item in the batch still has `status = "NAME_MISMATCH"` (`409 UNRESOLVED_NAME_MISMATCH`).
+    - Sanitizes display names via `sanitizeDisplayNameForGemini` (`<= 60` chars, letters/spaces/hyphens/apostrophes/periods, no prompt-injection keywords, or `"Recipient N"`) and sends **only** `{ instruction, recipients: [{ recipientId, displayName }] }` to the Gemini planner wrapper (`BulkGeminiPlannerClient`).
+    - Enforces the **dual amount check** (`verifyDualAmountCheck`): every Gemini-proposed amount must equal an amount extracted by `parseInstructionAmountsMinor` (`422 CLARIFICATION_REQUIRED` with `BULK_PLAN_CLARIFICATION_REQUIRED` audit event if they differ).
+    - Enforces both `MAX_AMOUNT_MINOR` (`$100.00` per transfer) and `MAX_BATCH_MINOR` (`$300.00` per batch) (`422 LIMIT_EXCEEDED` with `BULK_PLAN_REJECTED` audit event if exceeded).
+    - Computes RFC 8785 `planHash` (`computePlanHash`) and SHA-256 `requestHash` over the normalized instruction, sets batch `status = "PLANNED"`, and returns a `plan` widget alongside server-composed `spoken` text.
+- `POST /api/v1/bulk/:batchId/confirm-plan`
+  - **Authentication & Ownership**: Requires a valid signed `kp_session` cookie and verifies that `batchId` belongs to the caller.
+  - **Request body**: `{ "planHash": "<64-char sha256>" }`.
+  - **Behavior**:
+    - Recomputes `computePlanHash` from the persisted batch items and verifies that it matches both the stored `planHash` and the client's submitted `planHash` (`409 PLAN_HASH_MISMATCH` with `BULK_PLAN_REJECTED` audit event on mismatch).
+    - Transitions matched items to `READY` and batch `status` to `CONFIRMED`, appends `BULK_PLAN_CONFIRMED`, and returns the confirmed `plan` widget.

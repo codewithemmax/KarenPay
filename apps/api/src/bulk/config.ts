@@ -3,6 +3,8 @@ import { loadMandateConfig, type MandateConfig } from "../mandates.js";
 export interface BulkConfig extends MandateConfig {
   maxBatchMinor: number;
   batchTtlSeconds: number;
+  geminiApiKey?: string;
+  geminiModel?: string;
 }
 
 /**
@@ -34,5 +36,7 @@ export function loadBulkConfig(
     ...mandateConfig,
     maxBatchMinor,
     batchTtlSeconds: 600,
+    geminiApiKey: environment.GEMINI_API_KEY?.trim() || undefined,
+    geminiModel: environment.GEMINI_MODEL?.trim() || undefined,
   };
 }
