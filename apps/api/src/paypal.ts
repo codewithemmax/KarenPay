@@ -26,11 +26,13 @@ export interface PayPalClientConfig {
 }
 
 export interface PayoutItem {
-  recipientType: "EMAIL" | "PHONE" | "PAYPAL_ID";
+  recipientType?: "EMAIL" | "PHONE" | "PAYPAL_ID";
+  recipient_type?: "EMAIL" | "PHONE" | "PAYPAL_ID";
   receiver: string;
   amount: { value: string; currency: string };
   note?: string;
   senderItemId?: string;
+  sender_item_id?: string;
 }
 
 export interface PayoutRequest {
@@ -70,10 +72,24 @@ export class PayPalClient {
       body: JSON.stringify({
         sender_batch_header: {
           sender_batch_id: request.mandateId,
-          email_subject: request.emailSubject,
-          email_message: request.emailMessage,
+          ...(request.emailSubject ? { email_subject: request.emailSubject } : {}),
+          ...(request.emailMessage ? { email_message: request.emailMessage } : {}),
         },
-        items: request.items,
+        items: request.items.map((item) => {
+          const formatted: Record<string, unknown> = {
+            recipient_type: item.recipient_type ?? item.recipientType ?? "EMAIL",
+            receiver: item.receiver,
+            amount: item.amount,
+          };
+          if (item.note) {
+            formatted.note = item.note;
+          }
+          const senderItemId = item.sender_item_id ?? item.senderItemId;
+          if (senderItemId) {
+            formatted.sender_item_id = senderItemId;
+          }
+          return formatted;
+        }),
       }),
     });
     const parsed = payoutResponseSchema.parse(await response.json());
