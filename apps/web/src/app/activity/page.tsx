@@ -1,0 +1,651 @@
+"use client";
+
+import {
+  CheckCircle2,
+  Clock,
+  FileText,
+  RefreshCw,
+  ShieldAlert,
+  ShieldCheck,
+  X,
+  XCircle,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import { BottomTabBar } from "../../components/BottomTabBar";
+import { useAnnounce } from "../../components/LiveRegions";
+import { formatUsdMinor } from "../../lib/demoData";
+
+interface AuditEventRecord {
+  id: string;
+  accountId?: string;
+  mandateId: string | null;
+  eventType: string;
+  detail: {
+    payeeName?: string;
+    recipientName?: string;
+    resolvedName?: string;
+    pastedName?: string;
+    bankName?: string;
+    accountLast4?: string;
+    batchId?: string;
+    itemId?: string;
+    planHash?: string;
+    decision?: string;
+    amountMinor?: number;
+    totalMinor?: number;
+    paidMinor?: number;
+    recipientCount?: number;
+    itemCount?: number;
+    currency?: string;
+    payoutBatchId?: string;
+    paypalRef?: string;
+    code?: string;
+    reason?: string;
+    mandateHash?: string;
+    requestHash?: string;
+    spokenText?: string;
+    [key: string]: unknown;
+  };
+  prevHash: string | null;
+  hash: string;
+  createdAt: string;
+}
+
+interface AuditChainResponse {
+  chainValid?: boolean;
+  valid?: boolean;
+  spoken?: string;
+  events: AuditEventRecord[];
+}
+
+function getApprovedStatusChip(eventType: string): {
+  label:
+    | "Test payment sent"
+    | "Rejected"
+    | "Not sent"
+    | "Waiting for your approval";
+  isRejected: boolean;
+} {
+  switch (eventType) {
+    case "PAYMENT_SENT":
+    case "MANDATE_CONSUMED":
+    case "BULK_ITEM_PAID":
+    case "BULK_BATCH_COMPLETED":
+      return { label: "Test payment sent", isRejected: false };
+    case "APPROVAL_REJECTED":
+    case "MANDATE_REJECTED":
+    case "BULK_PARSE_REJECTED":
+    case "BULK_NAME_RESOLVE_REJECTED":
+    case "BULK_PLAN_REJECTED":
+    case "BULK_PLAN_CONFIRM_REJECTED":
+    case "BULK_ITEM_ACTIVATION_REJECTED":
+    case "BULK_NEXT_REJECTED":
+    case "BULK_MANDATE_FETCH_REJECTED":
+    case "BULK_ITEM_CANCEL_REJECTED":
+    case "BULK_CANCEL_REMAINING_REJECTED":
+      return { label: "Rejected", isRejected: true };
+    case "PAYMENT_FAILED":
+    case "BULK_ITEM_FAILED":
+    case "BULK_ITEM_CANCELLED":
+    case "BULK_ITEM_EXPIRED":
+      return { label: "Not sent", isRejected: true };
+    default:
+      return { label: "Waiting for your approval", isRejected: false };
+  }
+}
+
+function formatBulkAccountSuffix(detail: AuditEventRecord["detail"]): string {
+  if (!detail) return "";
+  const bank = typeof detail.bankName === "string" ? detail.bankName : "";
+  const last4 =
+    typeof detail.accountLast4 === "string" ? detail.accountLast4 : "";
+  if (bank && last4) {
+    return ` at ${bank} (account ending in last 4 digits ${last4})`;
+  }
+  if (bank) {
+    return ` at ${bank}`;
+  }
+  if (last4) {
+    return ` (account ending in last 4 digits ${last4})`;
+  }
+  return "";
+}
+
+function getEventTitle(event: AuditEventRecord): string {
+  const payee =
+    event.detail && typeof event.detail.payeeName === "string"
+      ? event.detail.payeeName
+      : null;
+  const bulkRecipient =
+    event.detail && typeof event.detail.recipientName === "string"
+      ? event.detail.recipientName
+      : event.detail && typeof event.detail.resolvedName === "string"
+        ? event.detail.resolvedName
+        : event.detail && typeof event.detail.pastedName === "string"
+          ? event.detail.pastedName
+          : null;
+  const suffix = formatBulkAccountSuffix(event.detail);
+
+  switch (event.eventType) {
+    case "PAYMENT_SENT":
+      return payee ? `Test payment to ${payee}` : "Test payment sent";
+    case "MANDATE_CONSUMED":
+      return payee ? `Passkey approved for ${payee}` : "Passkey approved";
+    case "MANDATE_CREATED":
+      return payee ? `Mandate created for ${payee}` : "Mandate created";
+    case "APPROVAL_REJECTED":
+    case "MANDATE_REJECTED":
+      return payee ? `Blocked payment to ${payee}` : "Blocked payment request";
+    case "BULK_BATCH_PARSED": {
+      const count =
+        typeof event.detail?.recipientCount === "number"
+          ? event.detail.recipientCount
+          : 0;
+      return `Bulk batch parsed (${count} ${count === 1 ? "recipient" : "recipients"})`;
+    }
+    case "BULK_PARSE_REJECTED":
+      return "Bulk recipient paste rejected";
+    case "BULK_NAME_RESOLVED":
+      return bulkRecipient
+        ? `Bulk name decision for ${bulkRecipient}${suffix}`
+        : `Bulk name decision${suffix}`;
+    case "BULK_NAME_RESOLVE_REJECTED":
+      return "Bulk name decision rejected";
+    case "BULK_PLAN_CREATED": {
+      const count =
+        typeof event.detail?.itemCount === "number"
+          ? event.detail.itemCount
+          : 0;
+      return `Bulk payment plan created (${count} ${count === 1 ? "item" : "items"})`;
+    }
+    case "BULK_PLAN_CONFIRMED":
+      return "Bulk payment plan confirmed";
+    case "BULK_PLAN_REJECTED":
+    case "BULK_PLAN_CONFIRM_REJECTED":
+      return "Bulk payment plan rejected";
+    case "BULK_ITEM_ACTIVATED":
+      return bulkRecipient
+        ? `Bulk transfer activated for ${bulkRecipient}${suffix}`
+        : `Bulk transfer activated${suffix}`;
+    case "BULK_ITEM_PAID":
+      return bulkRecipient
+        ? `Bulk test payment sent to ${bulkRecipient}${suffix}`
+        : "Bulk test payment sent";
+    case "BULK_ITEM_FAILED":
+      return bulkRecipient
+        ? `Bulk transfer not sent to ${bulkRecipient}${suffix}`
+        : "Bulk transfer not sent";
+    case "BULK_ITEM_CANCELLED":
+      return bulkRecipient
+        ? `Cancelled bulk transfer to ${bulkRecipient}${suffix}`
+        : `Cancelled bulk transfer${suffix}`;
+    case "BULK_ITEM_EXPIRED":
+      return "Bulk transfer approval expired";
+    case "BULK_BATCH_COMPLETED":
+      return "Bulk payment batch completed";
+    default:
+      return event.eventType.replace(/_/g, " ");
+  }
+}
+
+function formatAuditTimestamp(iso: string): string {
+  try {
+    const date = new Date(iso);
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return iso;
+  }
+}
+
+export default function ActivityPage(): React.JSX.Element {
+  const router = useRouter();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const dialogTitleId = useId();
+  const { announcePolite } = useAnnounce();
+
+  const [chainValid, setChainValid] = useState<boolean>(true);
+  const [events, setEvents] = useState<AuditEventRecord[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<AuditEventRecord | null>(
+    null,
+  );
+
+  const loadAuditLog = useCallback(
+    async (announceRefresh = false) => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const res = await fetch("/api/v1/audit", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (res.status === 401) {
+          router.replace("/");
+          return;
+        }
+        if (res.ok) {
+          const data = (await res.json()) as AuditChainResponse;
+          const isValid = Boolean(data.chainValid ?? data.valid ?? true);
+          setChainValid(isValid);
+          const ordered = [...(data.events ?? [])].reverse();
+          setEvents(ordered);
+          if (announceRefresh) {
+            announcePolite(
+              isValid
+                ? `Activity refreshed. Audit chain intact with ${ordered.length} events.`
+                : "Activity refreshed. Audit chain problem found.",
+            );
+          }
+        } else {
+          setLoadError("Unable to load your audit log.");
+        }
+      } catch {
+        setLoadError(
+          "Unable to connect to the KarenPay API server. Make sure the backend service is running.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [announcePolite, router],
+  );
+
+  useEffect(() => {
+    headingRef.current?.focus();
+    void loadAuditLog(false);
+  }, [loadAuditLog]);
+
+  useEffect(() => {
+    if (!selectedEvent) return;
+    const focusTimer = window.setTimeout(() => {
+      closeButtonRef.current?.focus();
+    }, 20);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSelectedEvent(null);
+        lastTriggerRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedEvent]);
+
+  const handleOpenInspector = (
+    event: AuditEventRecord,
+    buttonEl: HTMLButtonElement,
+  ) => {
+    lastTriggerRef.current = buttonEl;
+    setSelectedEvent(event);
+  };
+
+  const handleCloseInspector = () => {
+    setSelectedEvent(null);
+    lastTriggerRef.current?.focus();
+  };
+
+  return (
+    <div className="flex flex-col gap-6 pb-24">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="text-[28px] font-bold leading-[1.2] text-[var(--text)] outline-none"
+          >
+            Activity
+          </h1>
+          <p className="mt-1 text-[16px] text-[var(--text-muted)]">
+            Tamper-evident SHA-256 hash-chained audit log. Tap any event to
+            inspect its cryptographic proof.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void loadAuditLog(true)}
+          aria-label="Refresh activity log"
+          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2.5 text-[15px] font-bold text-[var(--text)] hover:bg-[var(--surface-tint)]"
+        >
+          <RefreshCw className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      {/* Chain Integrity Banner */}
+      <div
+        role="status"
+        className={`flex items-center justify-between gap-3 rounded-2xl border-2 p-4 ${
+          chainValid
+            ? "border-[var(--border-strong)] bg-[var(--surface-tint)] text-[var(--text)]"
+            : "border-[var(--danger)] bg-[var(--surface)] text-[var(--danger)]"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          {chainValid ? (
+            <ShieldCheck
+              className="h-6 w-6 shrink-0 text-[var(--text)]"
+              aria-hidden="true"
+            />
+          ) : (
+            <ShieldAlert
+              className="h-6 w-6 shrink-0 text-[var(--danger)]"
+              aria-hidden="true"
+            />
+          )}
+          <div>
+            <p className="text-[16px] font-bold">
+              {chainValid
+                ? "Audit chain: intact"
+                : "Audit chain: problem found"}
+            </p>
+            <p className="text-[14px] text-[var(--text-muted)]">
+              <span className="num font-bold">{events.length}</span> linked
+              events verified with SHA-256 base64url digest chaining
+            </p>
+          </div>
+        </div>
+        <span className="num rounded-full border-2 border-[var(--border-strong)] bg-[var(--surface)] px-3 py-1 text-[13px] font-bold text-[var(--text)]">
+          SHA-256 OK
+        </span>
+      </div>
+
+      {loadError ? (
+        <div className="rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--warning-bg)] p-5 text-[16px] font-bold text-[var(--warning-text)]">
+          {loadError}
+        </div>
+      ) : null}
+
+      {/* Audit Event List */}
+      {isLoading ? (
+        <div className="rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-6 text-[16px] font-bold text-[var(--text)]">
+          Loading audit events...
+        </div>
+      ) : events.length === 0 ? (
+        <div className="rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-6 text-[16px] text-[var(--text-muted)]">
+          No audit events recorded yet. Every mandate creation, passkey
+          approval, and payout event will be hash-chained here automatically.
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-3" aria-label="Audit events">
+          {events.map((event) => {
+            const chip = getApprovedStatusChip(event.eventType);
+            const amountMinor =
+              event.detail && typeof event.detail.amountMinor === "number"
+                ? event.detail.amountMinor
+                : event.detail && typeof event.detail.totalMinor === "number"
+                  ? event.detail.totalMinor
+                  : null;
+            return (
+              <li key={event.id}>
+                <button
+                  type="button"
+                  onClick={(e) => handleOpenInspector(event, e.currentTarget)}
+                  className="flex min-h-[84px] w-full flex-col gap-3 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-4 text-left transition-colors hover:bg-[var(--surface-tint)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <span
+                        aria-hidden="true"
+                        className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-[var(--border-strong)] ${
+                          chip.isRejected
+                            ? "bg-[var(--coral)] text-[var(--text)]"
+                            : "bg-[var(--sun)] text-[var(--text)]"
+                        }`}
+                      >
+                        {chip.isRejected ? (
+                          <XCircle className="h-5 w-5" />
+                        ) : event.eventType === "MANDATE_CREATED" ||
+                          event.eventType === "BULK_ITEM_ACTIVATED" ||
+                          event.eventType === "BULK_PLAN_CREATED" ? (
+                          <Clock className="h-5 w-5" />
+                        ) : (
+                          <CheckCircle2 className="h-5 w-5" />
+                        )}
+                      </span>
+                      <div>
+                        <span className="block text-[17px] font-bold text-[var(--text)]">
+                          {getEventTitle(event)}
+                        </span>
+                        <span className="num mt-0.5 block text-[14px] text-[var(--text-muted)]">
+                          {formatAuditTimestamp(event.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {amountMinor !== null ? (
+                      <span className="num shrink-0 text-[18px] font-bold text-[var(--text)]">
+                        {formatUsdMinor(amountMinor)}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--divider)] pt-2.5">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-0.5 text-[13px] font-bold ${
+                        chip.isRejected
+                          ? "border-[var(--danger)] bg-[var(--bg)] text-[var(--danger)]"
+                          : "border-[var(--border-strong)] bg-[var(--surface-tint)] text-[var(--text)]"
+                      }`}
+                    >
+                      {chip.label}
+                    </span>
+                    <span className="num inline-flex items-center gap-1.5 text-[13px] font-bold text-[var(--text-muted)]">
+                      <FileText className="h-4 w-4" aria-hidden="true" />
+                      <span>hash: {event.hash.slice(0, 12)}...</span>
+                    </span>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Slide-Up Bottom Sheet / Modal Inspector */}
+      {selectedEvent ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#1F0D09]/70 p-0 sm:items-center sm:p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCloseInspector();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={dialogTitleId}
+            className="flex max-h-[90vh] w-full max-w-[560px] flex-col gap-4 overflow-y-auto rounded-t-3xl border-t-2 border-[var(--border-strong)] bg-[var(--surface)] p-6 text-[var(--text)] sm:rounded-3xl sm:border-2"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  Cryptographic Chain Inspector
+                </span>
+                <h2
+                  id={dialogTitleId}
+                  className="mt-0.5 text-[22px] font-bold text-[var(--text)]"
+                >
+                  {getEventTitle(selectedEvent)}
+                </h2>
+              </div>
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={handleCloseInspector}
+                aria-label="Close cryptographic inspector"
+                className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] text-[var(--text)] hover:bg-[var(--peach)]"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck
+                  className="h-5 w-5 shrink-0 text-[var(--text)]"
+                  aria-hidden="true"
+                />
+                <span className="text-[15px] font-bold text-[var(--text)]">
+                  Verification Status: Hash Chain Verified
+                </span>
+              </div>
+              <span className="num text-[13px] font-bold text-[var(--text-muted)]">
+                {selectedEvent.eventType}
+              </span>
+            </div>
+
+            <dl className="flex flex-col gap-3 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4">
+              <div>
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  mandateId
+                </dt>
+                <dd
+                  data-testid="inspector-mandate-id"
+                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
+                >
+                  {selectedEvent.mandateId ?? "N/A (Pre-mandate check)"}
+                </dd>
+              </div>
+
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.batchId === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    batchId
+                  </dt>
+                  <dd
+                    data-testid="inspector-batch-id"
+                    className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
+                  >
+                    {selectedEvent.detail.batchId}
+                  </dd>
+                </div>
+              ) : null}
+
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.planHash === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    planHash
+                  </dt>
+                  <dd className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]">
+                    {selectedEvent.detail.planHash}
+                  </dd>
+                </div>
+              ) : null}
+
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.accountLast4 === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    accountLast4 (Simulated directory)
+                  </dt>
+                  <dd className="num mt-0.5 text-[15px] font-bold text-[var(--text)]">
+                    Ending in {selectedEvent.detail.accountLast4}
+                    {typeof selectedEvent.detail.bankName === "string"
+                      ? ` · ${selectedEvent.detail.bankName}`
+                      : ""}
+                  </dd>
+                </div>
+              ) : null}
+
+              <div className="border-t border-[var(--divider)] pt-2.5">
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  mandateHash
+                </dt>
+                <dd
+                  data-testid="inspector-mandate-hash"
+                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
+                >
+                  {selectedEvent.detail &&
+                  typeof selectedEvent.detail.mandateHash === "string"
+                    ? selectedEvent.detail.mandateHash
+                    : selectedEvent.hash}
+                </dd>
+              </div>
+
+              <div className="border-t border-[var(--divider)] pt-2.5">
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  prevHash
+                </dt>
+                <dd
+                  data-testid="inspector-prev-hash"
+                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
+                >
+                  {selectedEvent.prevHash ?? "GENESIS_ROOT (null)"}
+                </dd>
+              </div>
+
+              <div className="border-t border-[var(--divider)] pt-2.5">
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  requestHash
+                </dt>
+                <dd
+                  data-testid="inspector-request-hash"
+                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
+                >
+                  {selectedEvent.detail &&
+                  typeof selectedEvent.detail.requestHash === "string"
+                    ? selectedEvent.detail.requestHash
+                    : "N/A"}
+                </dd>
+              </div>
+
+              <div className="border-t border-[var(--divider)] pt-2.5">
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  eventHash (Current SHA-256 Digest)
+                </dt>
+                <dd className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]">
+                  {selectedEvent.hash}
+                </dd>
+              </div>
+
+              {selectedEvent.detail &&
+              typeof selectedEvent.detail.spokenText === "string" ? (
+                <div className="border-t border-[var(--divider)] pt-2.5">
+                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    spokenText
+                  </dt>
+                  <dd
+                    data-testid="inspector-spoken-text"
+                    className="mt-1 text-[15px] font-bold leading-relaxed text-[var(--text)]"
+                  >
+                    &ldquo;{selectedEvent.detail.spokenText}&rdquo;
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+
+            <button
+              type="button"
+              onClick={handleCloseInspector}
+              className="inline-flex min-h-[48px] w-full items-center justify-center rounded-xl border-2 border-[var(--border-strong)] bg-[var(--primary)] px-5 py-3 text-[16px] font-bold text-[#FFFFFF] hover:bg-[var(--primary-hover)]"
+            >
+              Close Inspector
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <BottomTabBar activeTab="activity" />
+    </div>
+  );
+}

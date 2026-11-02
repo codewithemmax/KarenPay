@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircle, Info } from "lucide-react";
+import { usePathname } from "next/navigation";
 import React, {
   createContext,
   useCallback,
@@ -30,7 +31,30 @@ export function useLiveRegions(): LiveRegionsContextValue {
   return context;
 }
 
+export function useAnnounce(): {
+  announcePolite: (msg: string) => void;
+  announceAssertive: (msg: string) => void;
+} {
+  const { setPoliteTranscript, announceStatus } = useLiveRegions();
+  const announcePolite = useCallback(
+    (msg: string) => {
+      setPoliteTranscript(msg);
+    },
+    [setPoliteTranscript],
+  );
+  const announceAssertive = useCallback(
+    (msg: string) => {
+      announceStatus(msg, "error");
+    },
+    [announceStatus],
+  );
+  return { announcePolite, announceAssertive };
+}
+
 export function LiveRegionsProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isPayRoute = pathname === "/pay";
+
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [statusTone, setStatusTone] = useState<BannerTone>("neutral");
   const [politeTranscript, setPoliteTranscript] = useState<string>("");
@@ -60,7 +84,11 @@ export function LiveRegionsProvider({ children }: { children: ReactNode }) {
       }}
     >
       <div className="min-h-screen bg-bg text-text">
-        <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col px-5 py-6">
+        <div
+          className={`mx-auto flex min-h-screen w-full flex-col px-5 py-6 ${
+            isPayRoute ? "max-w-[480px] lg:max-w-[980px]" : "max-w-[480px]"
+          }`}
+        >
           {/* Always-mounted Assertive Status Banner */}
           <div
             role="status"

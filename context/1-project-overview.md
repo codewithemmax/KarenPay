@@ -21,6 +21,7 @@ KarenPay moves no money and holds none. PayPal's sandbox does the money movement
 
 ## Demo Actions
 * `send_money`: PayPal Payouts to a sandbox account. The main demo.
+* `bulk_pay` (Approved extension): Sequential passkey-approved sandbox `send_money` transfers for up to 5 pasted recipients checked against a simulated directory (no approve-all).
 
 ## What KarenPay Must NOT Claim
 * Bank-grade, certified, compliant with any regulation, unhackable, or safe for real money.

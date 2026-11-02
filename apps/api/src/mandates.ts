@@ -14,6 +14,7 @@ import {
   PaymentProposalSchema,
   type Contact,
   type JsonValue,
+  type Mandate,
   type MandateState,
   type PaymentPolicy,
 } from "../../../packages/core/src/index.js";
@@ -110,6 +111,139 @@ class SupabaseMandateStore {
   }
 }
 
+export async function buildMandateApprovalOptions(
+  rpID: string,
+  mandateHash: string,
+): Promise<Awaited<ReturnType<typeof generateAuthenticationOptions>>> {
+  return generateAuthenticationOptions({
+    rpID,
+    // SimpleWebAuthn serializes byte challenges to base64url. Passing the
+    // decoded digest avoids treating its base64url text as new challenge bytes.
+    challenge: new Uint8Array(Buffer.from(mandateHash, "base64url")),
+    userVerification: "required",
+  });
+}
+
+export type MandateCreateServiceResult =
+  | {
+      accepted: true;
+      mandate: Mandate;
+      mandateId: string;
+      mandateHash: string;
+      spoken: string;
+      readoutRequired: true;
+      expiresAt: string;
+      approvalOptions: Awaited<ReturnType<typeof generateAuthenticationOptions>>;
+    }
+  | {
+      accepted: false;
+      status: 422;
+      code: string;
+      message: string;
+    };
+
+export async function createAccountMandate(
+  config: MandateConfig,
+  accountId: string,
+  rawInput: unknown,
+): Promise<MandateCreateServiceResult> {
+  const store = new SupabaseMandateStore(config);
+  let mandateId: string | null = null;
+  try {
+    const input = mandateRequestSchema.parse(rawInput);
+    const intentResult = checkIntent(input.proposal, input.requestConstraints);
+    if (!intentResult.accepted) {
+      await store.createAuditEvent(accountId, null, "MANDATE_REJECTED", { code: intentResult.code });
+      return {
+        accepted: false,
+        status: 422,
+        code: intentResult.code,
+        message: "The payment details do not match your request.",
+      };
+    }
+    const contact = input.proposal.payeeContactId
+      ? await store.getOwnedContact(accountId, input.proposal.payeeContactId)
+      : undefined;
+    const limitsResult = checkLimits(input.proposal, config.paymentPolicy, contact ? [contact] : []);
+    if (!limitsResult.accepted) {
+      await store.createAuditEvent(accountId, null, "MANDATE_REJECTED", { code: limitsResult.code });
+      return {
+        accepted: false,
+        status: 422,
+        code: limitsResult.code,
+        message: "This test payment is not allowed.",
+      };
+    }
+
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + config.mandateTtlSeconds * 1000);
+    mandateId = randomUUID();
+    const payeeDisplayName = contact?.displayName ?? input.proposal.payeeName!;
+    const spokenText = buildReadout({
+      proposal: input.proposal,
+      payeeDisplayName,
+      requestConstraints: input.requestConstraints,
+    });
+    const mandate = buildMandate({
+      id: mandateId,
+      accountId,
+      ...input.proposal,
+      constraints: input.requestConstraints,
+      requestHash: input.requestHash,
+      nonce: randomUUID(),
+      issuedAt: issuedAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      spokenText,
+    });
+    const mandateHash = hashMandate(mandate);
+    await store.createMandate({
+      id: mandate.id,
+      account_id: mandate.accountId,
+      action: mandate.action,
+      payee_contact_id: mandate.payeeContactId ?? null,
+      ...(mandate.payeeName ? { payee_name: mandate.payeeName } : {}),
+      ...(mandate.payeeAccountNumber ? { payee_account_number: mandate.payeeAccountNumber } : {}),
+      amount_minor: mandate.amountMinor,
+      currency: mandate.currency,
+      constraints: mandate.constraints,
+      request_hash: mandate.requestHash,
+      nonce: mandate.nonce,
+      issued_at: mandate.issuedAt,
+      expires_at: mandate.expiresAt,
+      spoken_text: mandate.spokenText,
+      mandate_hash: mandateHash,
+      state: "CREATED",
+    });
+    await store.createAuditEvent(accountId, mandateId, "MANDATE_CREATED", {
+      mandateHash,
+      requestHash: mandate.requestHash,
+      spokenText: mandate.spokenText,
+      payeeName: payeeDisplayName,
+      amountMinor: mandate.amountMinor,
+      currency: mandate.currency,
+    });
+
+    const approvalOptions = await buildMandateApprovalOptions(config.rpID, mandateHash);
+    return {
+      accepted: true,
+      mandate,
+      mandateId,
+      mandateHash,
+      spoken: spokenText,
+      readoutRequired: true,
+      expiresAt: expiresAt.toISOString(),
+      approvalOptions,
+    };
+  } catch (error) {
+    if (mandateId) {
+      await store.createAuditEvent(accountId, mandateId, "MANDATE_CREATE_FAILED", {}).catch(() => undefined);
+    } else {
+      await store.createAuditEvent(accountId, null, "MANDATE_CREATE_FAILED", {}).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
 export function createMandateRouter(config: MandateConfig): Router {
   const router = Router();
   const store = new SupabaseMandateStore(config);
@@ -117,95 +251,34 @@ export function createMandateRouter(config: MandateConfig): Router {
   router.post("/", async (request, response) => {
     const accountId = getAuthenticatedAccountId(request, config.sessionSecret);
     if (!accountId) {
+      console.warn("[Mandates] Creation rejected: missing or invalid session cookie");
       return response.status(401).json({ code: "AUTH_REQUIRED", message: "Please sign in before creating a test payment." });
     }
 
-    let mandateId: string | null = null;
     try {
-      const input = mandateRequestSchema.parse(request.body);
-      const intentResult = checkIntent(input.proposal, input.requestConstraints);
-      if (!intentResult.accepted) {
-        await store.createAuditEvent(accountId, null, "MANDATE_REJECTED", { code: intentResult.code });
-        return response.status(422).json({ code: intentResult.code, message: "The payment details do not match your request." });
+      console.log(`[Mandates] Creating mandate for account ${accountId}...`, {
+        proposal: request.body?.proposal,
+      });
+      const result = await createAccountMandate(config, accountId, request.body);
+      if (!result.accepted) {
+        console.warn(
+          `[Mandates] Mandate rejected: status=${result.status}, code=${result.code}, message="${result.message}"`,
+        );
+        return response.status(result.status).json({ code: result.code, message: result.message });
       }
-      const contact = input.proposal.payeeContactId
-        ? await store.getOwnedContact(accountId, input.proposal.payeeContactId)
-        : undefined;
-      const limitsResult = checkLimits(input.proposal, config.paymentPolicy, contact ? [contact] : []);
-      if (!limitsResult.accepted) {
-        await store.createAuditEvent(accountId, null, "MANDATE_REJECTED", { code: limitsResult.code });
-        return response.status(422).json({ code: limitsResult.code, message: "This test payment is not allowed." });
-      }
-
-      const issuedAt = new Date();
-      const expiresAt = new Date(issuedAt.getTime() + config.mandateTtlSeconds * 1000);
-      mandateId = randomUUID();
-      const payeeDisplayName = contact?.displayName ?? input.proposal.payeeName!;
-      const spokenText = buildReadout({
-        proposal: input.proposal,
-        payeeDisplayName,
-        requestConstraints: input.requestConstraints,
-      });
-      const mandate = buildMandate({
-        id: mandateId,
-        accountId,
-        ...input.proposal,
-        constraints: input.requestConstraints,
-        requestHash: input.requestHash,
-        nonce: randomUUID(),
-        issuedAt: issuedAt.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-        spokenText,
-      });
-      const mandateHash = hashMandate(mandate);
-      await store.createMandate({
-        id: mandate.id,
-        account_id: mandate.accountId,
-        action: mandate.action,
-        payee_contact_id: mandate.payeeContactId ?? null,
-        ...(mandate.payeeName ? { payee_name: mandate.payeeName } : {}),
-        ...(mandate.payeeAccountNumber ? { payee_account_number: mandate.payeeAccountNumber } : {}),
-        amount_minor: mandate.amountMinor,
-        currency: mandate.currency,
-        constraints: mandate.constraints,
-        request_hash: mandate.requestHash,
-        nonce: mandate.nonce,
-        issued_at: mandate.issuedAt,
-        expires_at: mandate.expiresAt,
-        spoken_text: mandate.spokenText,
-        mandate_hash: mandateHash,
-        state: "CREATED",
-      });
-      await store.createAuditEvent(accountId, mandateId, "MANDATE_CREATED", {
-        mandateHash,
-        requestHash: mandate.requestHash,
-        spokenText: mandate.spokenText,
-        payeeName: payeeDisplayName,
-        amountMinor: mandate.amountMinor,
-        currency: mandate.currency,
-      });
-
-      const approvalOptions = await generateAuthenticationOptions({
-        rpID: config.rpID,
-        // SimpleWebAuthn serializes byte challenges to base64url. Passing the
-        // decoded digest avoids treating its base64url text as new challenge bytes.
-        challenge: new Uint8Array(Buffer.from(mandateHash, "base64url")),
-        userVerification: "required",
-      });
+      console.log(
+        `[Mandates] Mandate created successfully: id=${result.mandateId}, hash=${result.mandateHash}`,
+      );
       return response.status(201).json({
-        mandateId,
-        mandateHash,
-        spoken: spokenText,
-        readoutRequired: true,
-        expiresAt: expiresAt.toISOString(),
-        approvalOptions,
+        mandateId: result.mandateId,
+        mandateHash: result.mandateHash,
+        spoken: result.spoken,
+        readoutRequired: result.readoutRequired,
+        expiresAt: result.expiresAt,
+        approvalOptions: result.approvalOptions,
       });
     } catch (error) {
-      if (mandateId) {
-        await store.createAuditEvent(accountId, mandateId, "MANDATE_CREATE_FAILED", {}).catch(() => undefined);
-      } else {
-        await store.createAuditEvent(accountId, null, "MANDATE_CREATE_FAILED", {}).catch(() => undefined);
-      }
+      console.error("[Mandates] Mandate creation exception:", error);
       if (error instanceof z.ZodError) {
         return response.status(400).json({ code: "INVALID_REQUEST", message: "The payment request is invalid." });
       }

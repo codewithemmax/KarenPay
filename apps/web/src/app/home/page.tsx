@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   History,
+  Layers,
   Mic,
   ShieldAlert,
   ShieldCheck,
@@ -19,12 +20,7 @@ import { BottomTabBar } from "../../components/BottomTabBar";
 import { Button } from "../../components/Button";
 import { useLiveRegions } from "../../components/LiveRegions";
 import {
-  DEMO_ACTIVITY_ROWS,
-  DEMO_BALANCE_MINOR,
-  DEMO_CONTACTS,
-  DEMO_HOLDER_DEFAULT_NAME,
-  DEMO_VOICE_LIMIT_MAX_MINOR,
-  DEMO_VOICE_LIMIT_USED_MINOR,
+  VOICE_POLICY_LIMIT_MAX_MINOR,
   formatMoneyMinor,
   getAvatarBgClass,
   getFirstName,
@@ -53,11 +49,13 @@ function mapAuditEventToPreviewRow(event: AuditEventApiRow): ActivityPreviewRow 
   const detailAmount =
     event.detail && typeof event.detail.amountMinor === "number"
       ? event.detail.amountMinor
-      : 5000;
+      : 0;
   const recipientFromDetail =
     event.detail && typeof event.detail.payeeName === "string"
       ? event.detail.payeeName
-      : "Ade Bello";
+      : event.detail && typeof event.detail.recipientName === "string"
+        ? event.detail.recipientName
+        : "Recipient";
   const shortRef = event.hash ? event.hash.slice(0, 8) : event.id.slice(0, 8);
   const dateObj = new Date(event.createdAt);
   const dateLabel = Number.isNaN(dateObj.getTime())
@@ -88,9 +86,9 @@ function mapAuditEventToPreviewRow(event: AuditEventApiRow): ActivityPreviewRow 
     title: `To ${recipientFromDetail}`,
     reference: `Ref ${shortRef}`,
     dateLabel,
-    amountFormatted: formatMoneyMinor(detailAmount, { debit: true }),
+    amountFormatted: formatMoneyMinor(detailAmount, { debit: detailAmount > 0 }),
     statusLabel:
-      event.eventType === "PAYMENT_SENT"
+      event.eventType === "PAYMENT_SENT" || event.eventType === "BULK_ITEM_PAID"
         ? "Test payment sent"
         : "Waiting for your approval",
     isBlocked: false,
@@ -101,16 +99,14 @@ export default function HomePage() {
   const router = useRouter();
   const { announceStatus } = useLiveRegions();
 
-  const [holderName, setHolderName] = useState<string>(
-    DEMO_HOLDER_DEFAULT_NAME,
-  );
+  const [holderName, setHolderName] = useState<string>("");
   const [greeting, setGreeting] = useState<string>("Good afternoon");
   const [balanceHidden, setBalanceHidden] = useState<boolean>(false);
-  const [contacts, setContacts] = useState<readonly ContactItem[]>(
-    DEMO_CONTACTS,
-  );
-  const [activityRows, setActivityRows] =
-    useState<readonly ActivityPreviewRow[]>(DEMO_ACTIVITY_ROWS);
+  const [contacts, setContacts] = useState<readonly ContactItem[]>([]);
+  const [activityRows, setActivityRows] = useState<
+    readonly ActivityPreviewRow[]
+  >([]);
+  const [usedVoiceLimitMinor, setUsedVoiceLimitMinor] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -119,14 +115,46 @@ export default function HomePage() {
     setLoadError(null);
 
     try {
-      const contactsRes = await fetch("/api/v1/contacts", {
-        method: "GET",
-        credentials: "include",
-      });
+      const [meRes, contactsRes, auditRes] = await Promise.all([
+        fetch("/api/v1/auth/me", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch("/api/v1/contacts", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch("/api/v1/audit", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }),
+      ]);
 
-      if (contactsRes.status === 401) {
+      if (
+        meRes.status === 401 ||
+        contactsRes.status === 401 ||
+        auditRes.status === 401
+      ) {
         router.replace("/");
         return;
+      }
+
+      if (meRes.ok) {
+        const meBody = (await meRes.json()) as { displayName?: string };
+        if (meBody.displayName) {
+          setHolderName(meBody.displayName);
+          try {
+            window.localStorage.setItem(
+              HOLDER_NAME_STORAGE_KEY,
+              meBody.displayName,
+            );
+          } catch {
+            // Ignore storage errors
+          }
+        }
       }
 
       if (contactsRes.ok) {
@@ -139,42 +167,39 @@ export default function HomePage() {
         };
         if (Array.isArray(body.contacts)) {
           setContacts(
-            body.contacts.slice(0, 5).map((item, idx) =>
-              withMaskedHint(item, idx),
-            ),
+            body.contacts.slice(0, 5).map((item) => withMaskedHint(item)),
           );
+        } else {
+          setContacts([]);
         }
-      } else {
-        setContacts(DEMO_CONTACTS);
       }
 
-      const auditRes = await fetch("/api/v1/audit", {
-        method: "GET",
-        credentials: "include",
-      });
-      if (auditRes.status === 401) {
-        router.replace("/");
-        return;
-      }
       if (auditRes.ok) {
         const auditBody = (await auditRes.json()) as {
           events?: AuditEventApiRow[];
         };
-        if (Array.isArray(auditBody.events) && auditBody.events.length > 0) {
-          const latestThree = [...auditBody.events]
-            .reverse()
-            .slice(0, 3)
-            .map(mapAuditEventToPreviewRow);
-          setActivityRows(latestThree);
-        } else {
-          setActivityRows(DEMO_ACTIVITY_ROWS);
-        }
-      } else {
-        setActivityRows(DEMO_ACTIVITY_ROWS);
+        const events = Array.isArray(auditBody.events) ? auditBody.events : [];
+        const sentMinor = events
+          .filter((e) => e.eventType === "PAYMENT_SENT")
+          .reduce((sum, e) => {
+            const amt =
+              e.detail && typeof e.detail.amountMinor === "number"
+                ? e.detail.amountMinor
+                : 0;
+            return sum + amt;
+          }, 0);
+        setUsedVoiceLimitMinor(sentMinor);
+
+        const latestThree = [...events]
+          .reverse()
+          .slice(0, 3)
+          .map(mapAuditEventToPreviewRow);
+        setActivityRows(latestThree);
       }
     } catch {
-      setContacts(DEMO_CONTACTS);
-      setActivityRows(DEMO_ACTIVITY_ROWS);
+      setLoadError(
+        "Unable to connect to the KarenPay API server. Make sure the backend service is running.",
+      );
     } finally {
       setLoading(false);
     }
@@ -205,23 +230,31 @@ export default function HomePage() {
       } catch {
         // Ignore storage write errors
       }
-      announceStatus(next ? "Balance hidden." : "Balance shown.", "neutral");
+      announceStatus(
+        next ? "Payment limit hidden." : "Payment limit shown.",
+        "neutral",
+      );
       return next;
     });
   };
 
   const firstName = getFirstName(holderName);
   const holderInitials = getInitials(holderName);
-  const formattedBalance = formatMoneyMinor(DEMO_BALANCE_MINOR);
-  const formattedUsed = formatMoneyMinor(DEMO_VOICE_LIMIT_USED_MINOR);
-  const formattedMax = formatMoneyMinor(DEMO_VOICE_LIMIT_MAX_MINOR);
-  const usedDollars = Math.trunc(DEMO_VOICE_LIMIT_USED_MINOR / 100);
-  const maxDollars = Math.trunc(DEMO_VOICE_LIMIT_MAX_MINOR / 100);
+  const remainingLimitMinor = Math.max(
+    0,
+    VOICE_POLICY_LIMIT_MAX_MINOR - usedVoiceLimitMinor,
+  );
+  const formattedRemaining = formatMoneyMinor(remainingLimitMinor);
+  const formattedUsed = formatMoneyMinor(usedVoiceLimitMinor);
+  const formattedMax = formatMoneyMinor(VOICE_POLICY_LIMIT_MAX_MINOR);
+  const usedDollars = Math.trunc(usedVoiceLimitMinor / 100);
+  const maxDollars = Math.trunc(VOICE_POLICY_LIMIT_MAX_MINOR / 100);
   const progressPercent = Math.min(
     100,
     Math.round((usedDollars / Math.max(1, maxDollars)) * 100),
   );
-  const exampleContactName = contacts[0]?.displayName ?? "Ade Bello";
+  const exampleContactName =
+    contacts[0]?.displayName ?? "your saved contact";
 
   return (
     <div className="flex flex-1 flex-col pb-28">
@@ -236,10 +269,11 @@ export default function HomePage() {
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-base font-semibold text-text">
-                {greeting}, {firstName}
+              <h1 className="truncate text-base font-bold text-text">
+                {greeting}
+                {holderName ? `, ${firstName}` : ""}
               </h1>
-              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
+              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
                 Sandbox
               </span>
             </div>
@@ -249,10 +283,8 @@ export default function HomePage() {
         <button
           type="button"
           aria-label="Notifications"
-          onClick={() =>
-            announceStatus("No new notifications in this sandbox demo.")
-          }
-          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-full bg-surface text-ink shadow-card transition-colors hover:bg-surface-tint"
+          onClick={() => announceStatus("No new notifications.")}
+          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-full border border-divider bg-surface text-text shadow-card transition-colors hover:bg-surface-tint"
         >
           <Bell aria-hidden="true" className="h-5 w-5" />
         </button>
@@ -263,24 +295,21 @@ export default function HomePage() {
           <section className="rounded-card bg-warning-bg p-5 text-warning-text shadow-card">
             <p className="text-base font-medium">{loadError}</p>
             <div className="mt-3">
-              <Button
-                variant="secondary"
-                onClick={() => void loadHomeData()}
-              >
+              <Button variant="secondary" onClick={() => void loadHomeData()}>
                 Try again
               </Button>
             </div>
           </section>
         )}
 
-        {/* 2. Balance card */}
+        {/* 2. Balance / Policy Limit Card */}
         <section
-          aria-label="Account balance"
+          aria-label="Voice payment allowance"
           className="on-dark rounded-card bg-balance-card p-6 text-white shadow-card"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="text-base font-medium text-peach">
-              Available balance
+              Available voice payment limit
             </span>
             <button
               type="button"
@@ -308,31 +337,25 @@ export default function HomePage() {
                 data-testid="home-balance-amount"
                 className="num text-[40px] font-bold leading-tight text-white"
               >
-                {formattedBalance}
+                {formattedRemaining}
               </p>
             )}
             <p className="mt-1 text-sm text-peach">
-              Sandbox demo balance. No real money.
+              PayPal Sandbox Payouts policy limit ($500.00 max per payment).
             </p>
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              tabIndex={-1}
-              className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-1.5 rounded-full bg-surface-tint px-4 py-2.5 text-sm font-semibold text-ink"
+            <Link
+              href="/contacts"
+              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-surface-tint px-4 py-2.5 text-center text-sm font-bold text-text transition-colors hover:bg-peach"
             >
-              <span>Add money</span>
-              <span className="text-sm font-normal text-text-muted">
-                · Coming soon
-              </span>
-            </button>
+              Manage contacts
+            </Link>
 
             <Link
               href="/activity"
-              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-surface px-4 py-2.5 text-center text-sm font-semibold text-ink transition-colors hover:bg-surface-tint"
+              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-full bg-surface px-4 py-2.5 text-center text-sm font-bold text-text transition-colors hover:bg-surface-tint"
             >
               Transaction history
             </Link>
@@ -341,10 +364,10 @@ export default function HomePage() {
           <div className="mt-5">
             <div className="flex items-center justify-between gap-2 text-sm text-peach">
               <span id="voice-limit-label" className="num">
-                Voice limit today {formattedUsed} of {formattedMax}
+                Sent via voice {formattedUsed} of {formattedMax}
               </span>
-              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
-                Demo
+              <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
+                Policy active
               </span>
             </div>
             <div
@@ -371,24 +394,24 @@ export default function HomePage() {
           <div className="grid grid-cols-4 gap-3">
             <Link
               href="/pay"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-text"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white"
               >
                 <Mic aria-hidden="true" className="h-6 w-6" />
               </span>
-              <span className="text-sm font-semibold text-text">Voice pay</span>
+              <span className="text-sm font-bold text-text">Voice pay</span>
             </Link>
 
             <Link
               href="/contacts"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <Users aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -397,11 +420,11 @@ export default function HomePage() {
 
             <Link
               href="/activity"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <History aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -410,11 +433,11 @@ export default function HomePage() {
 
             <Link
               href="/me"
-              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
+              className="flex min-h-[64px] min-w-[48px] flex-col items-center justify-center gap-2 rounded-card border border-divider bg-surface p-3 text-center shadow-card transition-colors hover:bg-surface-tint"
             >
               <span
                 aria-hidden="true"
-                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-ink"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-tint text-text"
               >
                 <ShieldCheck aria-hidden="true" className="h-6 w-6" />
               </span>
@@ -423,28 +446,80 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 4. Recent recipients */}
+        {/* 3b. Bulk Pay Card */}
+        <section
+          aria-labelledby="bulk-pay-card-heading"
+          data-testid="home-bulk-pay-card"
+          className="rounded-card border border-divider bg-surface p-5 shadow-card"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-tint text-text"
+              >
+                <Layers aria-hidden="true" className="h-6 w-6" />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2
+                    id="bulk-pay-card-heading"
+                    className="text-[20px] font-bold text-text"
+                  >
+                    Bulk pay
+                  </h2>
+                  <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
+                    Simulated directory
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-text-muted">
+                  Paste up to 5 recipients from WhatsApp, set an amount, and
+                  approve each test payment one at a time with your passkey
+                  (fingerprint or face).
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/bulk"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-primary-hover"
+            >
+              Open Bulk pay
+            </Link>
+          </div>
+        </section>
+
+        {/* 4. Saved recipients */}
         <section aria-labelledby="recent-recipients-heading">
           <div className="flex items-center justify-between gap-2">
             <h2
               id="recent-recipients-heading"
-              className="text-[20px] font-semibold text-text"
+              className="text-[20px] font-bold text-text"
             >
-              Recent recipients
+              Saved recipients
             </h2>
+            <Link
+              href="/contacts"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-full px-3 text-sm font-bold text-text transition-colors hover:bg-surface-tint"
+            >
+              Manage
+            </Link>
           </div>
 
           {contacts.length === 0 ? (
-            <p className="mt-3 rounded-card bg-surface p-4 text-sm text-text-muted shadow-card">
-              No saved contacts yet.
-            </p>
+            <div className="mt-2 rounded-card border border-divider bg-surface p-4 text-sm text-text-muted shadow-card">
+              No saved contacts yet.{" "}
+              <Link href="/contacts" className="font-bold text-text underline">
+                Add a contact
+              </Link>{" "}
+              to send voice payments.
+            </div>
           ) : (
-            <div className="mt-3 flex items-center gap-3 overflow-x-auto pb-1">
+            <div className="mt-2 flex items-center gap-3 overflow-x-auto pb-1">
               {contacts.map((contact, idx) => (
                 <Link
                   key={contact.id}
-                  href="/contacts"
-                  className="flex min-h-[64px] min-w-[68px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-input bg-surface px-3 py-2.5 text-center shadow-card transition-colors hover:bg-surface-tint"
+                  href={`/pay?contactId=${encodeURIComponent(contact.id)}&recipient=${encodeURIComponent(contact.displayName)}`}
+                  className="flex min-h-[64px] min-w-[68px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-input border border-divider bg-surface px-3 py-2.5 text-center shadow-card transition-colors hover:bg-surface-tint"
                 >
                   <span
                     aria-hidden="true"
@@ -466,22 +541,27 @@ export default function HomePage() {
           <div className="flex items-center justify-between gap-2">
             <h2
               id="recent-activity-heading"
-              className="text-[20px] font-semibold text-text"
+              className="text-[20px] font-bold text-text"
             >
               Recent activity
             </h2>
             <Link
               href="/activity"
-              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full px-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-tint"
+              className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full px-3 text-sm font-bold text-text transition-colors hover:bg-surface-tint"
             >
               See all
             </Link>
           </div>
 
-          <div className="mt-2 rounded-card bg-surface p-5 shadow-card">
+          <div className="mt-2 rounded-card border border-divider bg-surface p-5 shadow-card">
             {loading ? (
               <p className="text-base text-text-muted">
                 Loading recent activity…
+              </p>
+            ) : activityRows.length === 0 ? (
+              <p className="text-base text-text-muted">
+                No payment activity yet. Your hash-chained audit events will
+                appear here after your first voice payment request.
               </p>
             ) : (
               <ul className="flex flex-col divide-y divide-divider">
@@ -498,7 +578,7 @@ export default function HomePage() {
                         {getInitials(item.recipientName)}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-base font-semibold text-text">
+                        <p className="truncate text-base font-bold text-text">
                           {item.title}
                         </p>
                         <p className="num truncate text-sm text-text-muted">
@@ -514,7 +594,7 @@ export default function HomePage() {
                       >
                         {item.amountFormatted}
                       </p>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-ink">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-tint px-2.5 py-0.5 text-sm font-medium text-text">
                         {item.isBlocked ? (
                           <ShieldAlert
                             aria-hidden="true"
@@ -548,7 +628,7 @@ export default function HomePage() {
         >
           <span
             aria-hidden="true"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-ink"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-text"
           >
             <Mic aria-hidden="true" className="h-5 w-5" />
           </span>

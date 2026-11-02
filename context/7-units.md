@@ -103,3 +103,14 @@ Each unit is one atomic step: one PR-sized piece of work, testable and reviewabl
 
 ## Stretch (only after Unit 17 is done early)
 * Elastic: a voice-searchable view of the audit log on an Elastic General purpose project. Start the trial only then. Cut if there is any doubt.
+
+## Approved extension: Bulk Pay
+* **B0: Read-only discovery**: Integration map of existing functions, schemas, and components to reuse, limit config names, package manager and test commands, conflicts, and audit of existing UI strings.
+* **B1: Migration, directory seed, `MAX_BATCH_MINOR` config**: Additive migration (`batches`, `batch_items`, `sandbox_directory` with 12 seeded simulated records), `MAX_AMOUNT_MINOR=10000` and `MAX_BATCH_MINOR=30000` in `.env.example`, and `loadBulkConfig`.
+* **B2: `packages/bulk`**: Pure parser, >=20 Nigerian bank aliases, 10-digit account validation, duplicate detection, token-set name comparison, deterministic amount parser, Gemini display-name sanitizer (`<=60` chars, safe charset or `"Recipient N"`), widget `zod` schemas, and unit tests.
+* **B3: Parse and resolve-name endpoints**: `POST /api/v1/bulk/parse` and `POST /api/v1/bulk/items/:id/resolve-name` with hash-chained audit events.
+* **B4: Instruction interpretation, plan and confirm-plan**: `POST /api/v1/bulk/:batchId/plan` and `POST /api/v1/bulk/:batchId/confirm-plan` with dual amount check (Gemini vs. deterministic parser) and per-transfer + per-batch limits.
+* **B5: Queue execution, cancel & approve hook**: `POST /api/v1/bulk/:batchId/next`, `POST /api/v1/bulk/:batchId/items/:id/cancel`, `POST /api/v1/bulk/:batchId/cancel-remaining`, `GET /api/v1/bulk/:batchId`, `GET /api/v1/bulk/:batchId/items/:itemId/mandate`, fail-closed receiver resolution hook in `approve.ts`, and batch item state sync.
+* **B6: Web UI**: 5th bottom tab `"Bulk pay"`, `/home` card linking to `/bulk`, `/bulk` chat log + widget registry (`recipient_list`, `name_check`, `plan`, `transfer_approval`, `batch_summary`), and `/activity` rendering of bulk audit event types.
+* **B7: Tests and docs**: Security unit scenarios, Playwright virtual-authenticator 5-sequential approvals + tampered approval, `axe-core` checks on `/bulk` and the 5-tab bar (320px, 390px, 1280px), and updates to `docs/THREAT_MODEL.md` and `docs/KARENPAY_API.md`.
+* **B8: Merge gate**: Full existing and new test suites passing unchanged and recorded under the new commit hash in a new section of `docs/RESULTS.md`.

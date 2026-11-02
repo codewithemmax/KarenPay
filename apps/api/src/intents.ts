@@ -2,6 +2,7 @@ import type { GoogleGenAI } from "@google/genai";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { getAuthenticatedAccountId, loadAuthConfig, type AuthConfig } from "./auth.js";
+import { GroqClient } from "./groq.js";
 
 const intentRequestSchema = z.object({ transcript: z.string().trim().min(1).max(1_000) }).strict();
 const modelIntentSchema = z.object({
@@ -46,6 +47,12 @@ export interface IntentConfig extends AuthConfig {
   geminiApiKey: string;
   geminiModel: string;
   maxRequestsPerMinute: number;
+  groqApiKey?: string;
+  groqModel?: string;
+  groqBaseUrl?: string;
+  grokApiKey?: string;
+  grokModel?: string;
+  grokBaseUrl?: string;
 }
 
 export interface GeminiIntentClient {
@@ -64,6 +71,20 @@ export function loadIntentConfig(environment: NodeJS.ProcessEnv = process.env): 
     geminiApiKey: required("GEMINI_API_KEY"),
     geminiModel: required("GEMINI_MODEL"),
     maxRequestsPerMinute: 10,
+    groqApiKey:
+      environment.GROQ_API_KEY?.trim() ||
+      environment.GROQCLOUD_API_KEY?.trim() ||
+      environment.QROQ_API_KEY?.trim() ||
+      undefined,
+    groqModel: environment.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile",
+    groqBaseUrl:
+      environment.GROQ_BASE_URL?.trim() || "https://api.groq.com/openai/v1",
+    grokApiKey:
+      environment.GROK_API_KEY?.trim() ||
+      environment.XAI_API_KEY?.trim() ||
+      undefined,
+    grokModel: environment.GROK_MODEL?.trim() || "grok-2-latest",
+    grokBaseUrl: environment.GROK_BASE_URL?.trim() || "https://api.x.ai/v1",
   };
 }
 
@@ -73,11 +94,6 @@ class GoogleGeminiIntentClient implements GeminiIntentClient {
   constructor(private readonly config: IntentConfig) {}
 
   async extract(transcript: string, contacts: readonly string[]): Promise<unknown> {
-    if (!this.client) {
-      const { GoogleGenAI } = await import("@google/genai");
-      this.client = new GoogleGenAI({ apiKey: this.config.geminiApiKey });
-    }
-
     const prompt = [
       "Extract a sandbox money-transfer proposal from the transcript.",
       "Return JSON only. The only valid action is send_money.",
@@ -90,13 +106,81 @@ class GoogleGeminiIntentClient implements GeminiIntentClient {
       `Contacts: ${contacts.map((name, index) => `${index}: ${name}`).join("; ")}`,
       `Transcript: ${transcript}`,
     ].join("\n");
-    const response = await this.client.models.generateContent({
-      model: this.config.geminiModel,
-      contents: prompt,
-      config: { responseMimeType: "application/json", responseSchema: outputSchema },
-    });
-    if (!response.text) throw new Error("Gemini returned no text");
-    return JSON.parse(response.text) as unknown;
+
+    // 1. Try Gemini
+    if (this.config.geminiApiKey && this.config.geminiModel) {
+      try {
+        console.log(`[Single Intent] Calling Gemini model ${this.config.geminiModel}...`);
+        if (!this.client) {
+          const { GoogleGenAI } = await import("@google/genai");
+          this.client = new GoogleGenAI({ apiKey: this.config.geminiApiKey });
+        }
+
+        const response = await this.client.models.generateContent({
+          model: this.config.geminiModel,
+          contents: prompt,
+          config: { responseMimeType: "application/json", responseSchema: outputSchema },
+        });
+        if (response.text) return JSON.parse(response.text) as unknown;
+        console.warn("[Single Intent] Gemini returned no text, attempting fallback...");
+      } catch (geminiError: unknown) {
+        const errObj = geminiError as { status?: number; code?: number; message?: string } | undefined;
+        console.warn(
+          `[Single Intent] Gemini error (${errObj?.status || errObj?.code || "UNAVAILABLE"}): ${
+            errObj?.message || String(geminiError)
+          }. Attempting fallback provider...`,
+        );
+      }
+    }
+
+    // 2. Try GroqCloud (GROQ_API_KEY / GROQCLOUD_API_KEY / QROQ_API_KEY)
+    const groqKey =
+      this.config.groqApiKey ||
+      process.env.GROQ_API_KEY?.trim() ||
+      process.env.GROQCLOUD_API_KEY?.trim() ||
+      process.env.QROQ_API_KEY?.trim();
+    if (groqKey) {
+      try {
+        const groqModel =
+          this.config.groqModel ||
+          process.env.GROQ_MODEL?.trim() ||
+          "llama-3.3-70b-versatile";
+        const groqBaseUrl =
+          this.config.groqBaseUrl ||
+          process.env.GROQ_BASE_URL?.trim() ||
+          "https://api.groq.com/openai/v1";
+        console.log(`[Single Intent] Calling GroqCloud fallback (${groqModel} @ ${groqBaseUrl})...`);
+        const groq = new GroqClient({ apiKey: groqKey, model: groqModel, baseUrl: groqBaseUrl });
+        return await groq.generateJson(
+          prompt,
+          "You are a money transfer intent parser. Output valid JSON strictly matching the schema: { action: 'send_money', contactIndex: number|null, payeeName: string|null, payeeAccountNumber: string|null, amountMinor: number|null, currency: string|null, needsClarification: boolean, candidateIndexes: number[] }.",
+        );
+      } catch (groqError: unknown) {
+        console.warn("[Single Intent] GroqCloud fallback failed:", (groqError as Error)?.message || groqError);
+      }
+    }
+
+    // 3. Try Grok (xAI) if configured
+    const grokKey =
+      this.config.grokApiKey ||
+      process.env.GROK_API_KEY?.trim() ||
+      process.env.XAI_API_KEY?.trim();
+    if (grokKey) {
+      try {
+        const grokModel = this.config.grokModel || process.env.GROK_MODEL?.trim() || "grok-2-latest";
+        const grokBaseUrl = this.config.grokBaseUrl || process.env.GROK_BASE_URL?.trim() || "https://api.x.ai/v1";
+        console.log(`[Single Intent] Calling Grok fallback (${grokModel} @ ${grokBaseUrl})...`);
+        const grokClient = new GroqClient({ apiKey: grokKey, model: grokModel, baseUrl: grokBaseUrl });
+        return await grokClient.generateJson(
+          prompt,
+          "You are a money transfer intent parser. Output valid JSON strictly matching the schema: { action: 'send_money', contactIndex: number|null, payeeName: string|null, payeeAccountNumber: string|null, amountMinor: number|null, currency: string|null, needsClarification: boolean, candidateIndexes: number[] }.",
+        );
+      } catch (grokError: unknown) {
+        console.warn("[Single Intent] Grok fallback failed:", (grokError as Error)?.message || grokError);
+      }
+    }
+
+    throw new Error("Gemini returned no text and no alternative LLM provider succeeded");
   }
 }
 
