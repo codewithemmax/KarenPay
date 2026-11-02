@@ -6,8 +6,12 @@ async function proxyUpstream(
 ): Promise<NextResponse> {
   const { path } = await context.params;
   const subpath = path.join("/");
-  const apiOrigin = process.env.API_INTERNAL_ORIGIN ?? "http://localhost:3001";
-  const targetUrl = `${apiOrigin}/api/v1/${subpath}${request.nextUrl.search}`;
+  const apiOrigin =
+    process.env.API_URL ?? process.env.API_INTERNAL_ORIGIN ?? "http://localhost:3001";
+  const targetUrl = new URL(
+    `/api/v1/${subpath}${request.nextUrl.search}`,
+    apiOrigin,
+  ).toString();
 
   const rawBody =
     request.method !== "GET" && request.method !== "HEAD"
