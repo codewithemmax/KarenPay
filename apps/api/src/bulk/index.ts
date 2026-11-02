@@ -4,6 +4,7 @@ export {
   geminiBulkPlanOutputSchema,
   type BulkGeminiPlannerClient,
   type BulkGeminiRecipientInput,
+  type BulkPlannerFallbackOptions,
   type GeminiBulkPlanOutput,
 } from "./planner.js";
 export {

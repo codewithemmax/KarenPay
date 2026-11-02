@@ -14,6 +14,7 @@ export { createAuthRouter, loadAuthConfig } from "./auth.js";
 export { buildMandateApprovalOptions, createAccountMandate, createMandateRouter, loadMandateConfig } from "./mandates.js";
 export { createIntentRouter, loadIntentConfig, type GeminiIntentClient } from "./intents.js";
 export { createApproveBulkHook, createBulkRouter, loadBulkConfig, type BulkConfig } from "./bulk/index.js";
+export { GroqClient, GrokClient, type GroqClientConfig, type GrokClientConfig } from "./groq.js";
 export {
   PayPalApiError,
   PayPalClient,

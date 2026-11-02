@@ -432,6 +432,14 @@ export function createBulkRouter(
   plannerClient: BulkGeminiPlannerClient = new GoogleBulkGeminiPlannerClient(
     config.geminiApiKey,
     config.geminiModel,
+    {
+      groqApiKey: config.groqApiKey,
+      groqModel: config.groqModel,
+      groqBaseUrl: config.groqBaseUrl,
+      grokApiKey: config.grokApiKey,
+      grokModel: config.grokModel,
+      grokBaseUrl: config.grokBaseUrl,
+    },
   ),
 ): Router {
   const router = Router();

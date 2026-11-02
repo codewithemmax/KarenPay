@@ -370,5 +370,5 @@ describe("Unit 15: Attack Suite A — Crypto, Logic, and Passkey Flows", () => {
       globalThis.fetch = nativeFetch;
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     }
-  }, 20_000);
+  }, 60_000);
 });

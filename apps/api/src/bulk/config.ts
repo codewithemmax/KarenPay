@@ -5,6 +5,12 @@ export interface BulkConfig extends MandateConfig {
   batchTtlSeconds: number;
   geminiApiKey?: string;
   geminiModel?: string;
+  groqApiKey?: string;
+  groqModel?: string;
+  groqBaseUrl?: string;
+  grokApiKey?: string;
+  grokModel?: string;
+  grokBaseUrl?: string;
 }
 
 /**
@@ -38,5 +44,19 @@ export function loadBulkConfig(
     batchTtlSeconds: 600,
     geminiApiKey: environment.GEMINI_API_KEY?.trim() || undefined,
     geminiModel: environment.GEMINI_MODEL?.trim() || undefined,
+    groqApiKey:
+      environment.GROQ_API_KEY?.trim() ||
+      environment.GROQCLOUD_API_KEY?.trim() ||
+      environment.QROQ_API_KEY?.trim() ||
+      undefined,
+    groqModel: environment.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile",
+    groqBaseUrl:
+      environment.GROQ_BASE_URL?.trim() || "https://api.groq.com/openai/v1",
+    grokApiKey:
+      environment.GROK_API_KEY?.trim() ||
+      environment.XAI_API_KEY?.trim() ||
+      undefined,
+    grokModel: environment.GROK_MODEL?.trim() || "grok-2-latest",
+    grokBaseUrl: environment.GROK_BASE_URL?.trim() || "https://api.x.ai/v1",
   };
 }
