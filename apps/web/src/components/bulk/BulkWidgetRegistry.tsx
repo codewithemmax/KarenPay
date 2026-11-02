@@ -537,6 +537,9 @@ function TransferApprovalWidgetCard({
 
     void (async () => {
       try {
+        console.log(
+          `[Bulk Transfer UI] Fetching mandate for batch ${activeBatchId}, item ${activeItemId}...`,
+        );
         const res = await fetch(
           `/api/v1/bulk/${activeBatchId}/items/${activeItemId}/mandate`,
           {
@@ -551,6 +554,10 @@ function TransferApprovalWidgetCard({
         };
         if (cancelled) return;
         if (!res.ok || !data.mandate) {
+          console.error(
+            `[Bulk Transfer UI] Mandate fetch failed (${res.status}):`,
+            data,
+          );
           setFetchError(
             data.spoken ??
               data.message ??
@@ -559,11 +566,24 @@ function TransferApprovalWidgetCard({
           setIsLoadingMandate(false);
           return;
         }
+        console.log(
+          `[Bulk Transfer UI] Mandate fetched for item ${activeItemId}:`,
+          {
+            mandateId: data.mandate.id,
+            hash: data.mandateHash,
+            amountMinor: data.mandate.amountMinor,
+            payee: data.mandate.payeeName,
+          },
+        );
         setFetched(data);
         setIsLoadingMandate(false);
         startMandatoryReadout(data.spoken);
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          console.error(
+            `[Bulk Transfer UI] Network error while fetching mandate:`,
+            err,
+          );
           setFetchError("Unable to load transfer mandate details.");
           setIsLoadingMandate(false);
         }
@@ -645,7 +665,24 @@ function TransferApprovalWidgetCard({
     });
     recomputedHash = hashMandate(recomputedMandate);
     hashMatches = recomputedHash === fetched.mandateHash;
-  } catch {
+    if (!hashMatches) {
+      console.warn(
+        `[Bulk Transfer UI] Mandate hash mismatch for item ${widget.mandateId}:`,
+        {
+          recomputedHash,
+          fetchedHash: fetched.mandateHash,
+          tampered: tamperDisplayedFields,
+          displayedComposedName,
+          displayedAccountNumber,
+          displayedAmountMinor,
+        },
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[Bulk Transfer UI] Failed to recompute mandate hash for item ${widget.mandateId}:`,
+      err,
+    );
     recomputedHash = "INVALID_MANDATE_SHAPE";
     hashMatches = false;
   }
@@ -677,6 +714,15 @@ function TransferApprovalWidgetCard({
     setLocalError(null);
 
     try {
+      console.log(
+        `[Bulk Transfer UI] Starting passkey authentication for mandate ${widget.mandateId}...`,
+        {
+          rpId: fetched.approvalOptions.rpId || window.location.hostname,
+          challenge: fetched.approvalOptions.challenge,
+          allowCredentialsCount:
+            fetched.approvalOptions.allowCredentials?.length ?? 0,
+        },
+      );
       const credential = await startAuthentication({
         optionsJSON: {
           challenge: fetched.approvalOptions.challenge,
@@ -687,6 +733,9 @@ function TransferApprovalWidgetCard({
           allowCredentials: fetched.approvalOptions.allowCredentials ?? [],
         },
       });
+      console.log(
+        `[Bulk Transfer UI] Passkey signature acquired (${credential.id}), sending approval to /api/v1/mandates/${widget.mandateId}/approve...`,
+      );
 
       const res = await fetch(`/api/v1/mandates/${widget.mandateId}/approve`, {
         method: "POST",
@@ -702,7 +751,15 @@ function TransferApprovalWidgetCard({
         paypalRef?: string;
       };
 
+      console.log(
+        `[Bulk Transfer UI] Approval response status=${res.status}:`,
+        body,
+      );
+
       if (res.ok && body.code === "PAID") {
+        console.log(
+          `[Bulk Transfer UI] Transfer PAID successfully: paypalRef=${body.paypalRef}`,
+        );
         setFinalOutcome("PAID");
         setOutcomeRef(body.paypalRef ?? null);
         const spokenMsg = body.spoken ?? "Test payment sent.";
@@ -714,6 +771,10 @@ function TransferApprovalWidgetCard({
           spokenMsg,
         );
       } else {
+        console.warn(
+          `[Bulk Transfer UI] Transfer NOT sent (status=${res.status}, code=${body.code}):`,
+          body.message,
+        );
         setFinalOutcome("FAILED");
         const failMsg =
           body.spoken ?? body.message ?? "Test payment not sent.";
@@ -721,7 +782,11 @@ function TransferApprovalWidgetCard({
         announceAssertive(failMsg);
         await onTransferFailed(activeBatchId, widget.mandateId, failMsg);
       }
-    } catch {
+    } catch (err) {
+      console.error(
+        `[Bulk Transfer UI] Passkey prompt or approval exception for mandate ${widget.mandateId}:`,
+        err,
+      );
       const msg =
         "Passkey prompt was cancelled or could not be completed. Tap Approve to try again with your fingerprint or face.";
       setLocalError(msg);

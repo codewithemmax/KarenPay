@@ -450,9 +450,11 @@ export function createBulkRouter(
     try {
       const body = parseRequestSchema.parse(request.body);
       const rawText = (body.rawText ?? body.text ?? "").trim();
+      console.log(`[Bulk Parse] Processing parse request (${rawText.length} chars) for account ${accountId}`);
       const parsed = parseBulkRecipients(rawText);
 
       if (parsed.errorCode === "TOO_MANY_RECIPIENTS") {
+        console.warn(`[Bulk Parse] Rejected: too many recipients (over 5 cap)`);
         await store.audit(accountId, null, "BULK_PARSE_REJECTED", {
           code: "TOO_MANY_RECIPIENTS",
         });
@@ -464,6 +466,7 @@ export function createBulkRouter(
       }
 
       if (parsed.recipients.length === 0) {
+        console.warn(`[Bulk Parse] Rejected: no valid recipients parsed from text`);
         const firstReason =
           parsed.unreadable[0]?.reason ??
           parsed.errorMessage ??
@@ -481,6 +484,7 @@ export function createBulkRouter(
       }
 
       const directoryRows = await store.getSandboxDirectory();
+      console.log(`[Bulk Parse] Loaded ${directoryRows.length} sandbox directory rows`);
       const directoryMap = new Map<string, SandboxDirectoryRow>();
       for (const row of directoryRows) {
         directoryMap.set(
@@ -549,6 +553,15 @@ export function createBulkRouter(
       );
 
       await store.createBatchItems(itemRows);
+      console.log(
+        `[Bulk Parse] Created batch ${batchId} with ${itemRows.length} items (matched: ${
+          itemRows.filter((i) => i.status === "MATCHED").length
+        }, mismatch: ${
+          itemRows.filter((i) => i.status === "NAME_MISMATCH").length
+        }, notFound: ${
+          itemRows.filter((i) => i.status === "NOT_FOUND").length
+        })`,
+      );
 
       const { widgets, spoken } = buildParseAndResolveWidgets(
         batchId,
@@ -575,6 +588,7 @@ export function createBulkRouter(
         widgets,
       });
     } catch (error) {
+      console.error("[Bulk Parse] Unexpected error in /parse:", error);
       if (error instanceof z.ZodError) {
         return response.status(400).json({
           code: "INVALID_BULK_PARSE_REQUEST",
@@ -860,11 +874,14 @@ export function createBulkRouter(
           ),
         }));
 
+        console.log(`[Bulk Plan] Calling planner with instruction "${instruction}" and ${geminiRecipients.length} recipients...`);
         const rawModelOutput = await plannerClient.planAmounts(
           instruction,
           geminiRecipients,
         );
+        console.log(`[Bulk Plan] Raw model output:`, JSON.stringify(rawModelOutput));
         const modelPlan = geminiBulkPlanOutputSchema.parse(rawModelOutput);
+        console.log(`[Bulk Plan] Parsed model plan:`, modelPlan);
 
         if (
           modelPlan.needsClarification ||
@@ -872,6 +889,7 @@ export function createBulkRouter(
         ) {
           const msg =
             "Please restate the amount clearly, for example 25 dollars each.";
+          console.warn(`[Bulk Plan] Model requested clarification or item count mismatch`);
           await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
             batchId: batch.id,
             code: "CLARIFICATION_REQUIRED",
@@ -893,6 +911,7 @@ export function createBulkRouter(
           if (!amountByItemId.has(item.id)) {
             const msg =
               "Please restate the amount clearly for each recipient.";
+            console.warn(`[Bulk Plan] Incomplete plan amounts for item ${item.id}`);
             await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
               batchId: batch.id,
               code: "INCOMPLETE_PLAN_AMOUNTS",
@@ -911,7 +930,9 @@ export function createBulkRouter(
 
         // Rule 10: Dual amount check (Gemini output vs deterministic parser)
         const dualCheck = verifyDualAmountCheck(instruction, proposedAmounts);
+        console.log(`[Bulk Plan] Dual amount check result: accepted=${dualCheck.accepted}`);
         if (!dualCheck.accepted) {
+          console.warn(`[Bulk Plan] Dual amount check failed (code=${dualCheck.code}): ${dualCheck.spoken}`);
           await store.audit(accountId, null, "BULK_PLAN_REJECTED", {
             batchId: batch.id,
             code: dualCheck.code,
@@ -1029,6 +1050,7 @@ export function createBulkRouter(
           widgets: [planWidget],
         });
       } catch (error) {
+        console.error(`[Bulk Plan] Error planning amounts for batch ${request.params.batchId}:`, error);
         if (error instanceof z.ZodError) {
           return response.status(422).json({
             code: "INVALID_PLAN_REQUEST",
@@ -1044,6 +1066,7 @@ export function createBulkRouter(
             "The amount instruction could not be processed. Please try again.",
           spoken:
             "The amount instruction could not be processed. Please try again.",
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     },
@@ -1498,6 +1521,7 @@ export function createBulkRouter(
           widgets: [approvalWidget],
         });
       } catch (error) {
+        console.error(`[Bulk Next] Error activating next transfer for batch ${request.params.batchId}:`, error);
         if (error instanceof z.ZodError) {
           return response.status(400).json({
             code: "INVALID_NEXT_REQUEST",
@@ -1509,6 +1533,7 @@ export function createBulkRouter(
           code: "BULK_NEXT_FAILED",
           message: "The next transfer could not be activated.",
           spoken: "The next transfer could not be activated.",
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     },
@@ -1522,6 +1547,7 @@ export function createBulkRouter(
         config.sessionSecret,
       );
       if (!accountId) {
+        console.warn("[Bulk Mandate] Fetch rejected: unauthenticated request");
         return response.status(401).json({
           code: "AUTH_REQUIRED",
           message: "Please sign in before loading a transfer approval.",
@@ -1532,6 +1558,7 @@ export function createBulkRouter(
       try {
         const batchId = uuidParamSchema.parse(request.params.batchId);
         const itemId = uuidParamSchema.parse(request.params.itemId);
+        console.log(`[Bulk Mandate] Fetching mandate for batch ${batchId}, item ${itemId}...`);
 
         const batch = await store.getOwnedBatch(accountId, batchId);
         if (!batch) {

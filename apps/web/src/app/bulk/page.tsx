@@ -221,6 +221,9 @@ export default function BulkPayPage(): React.JSX.Element {
     setIsBusy(true);
     setErrorBanner(null);
     appendTurn("user", trimmed);
+    console.log(
+      `[Bulk Page] Parsing recipients from text (length=${trimmed.length})...`,
+    );
 
     try {
       const res = await fetch("/api/v1/bulk/parse", {
@@ -231,6 +234,7 @@ export default function BulkPayPage(): React.JSX.Element {
       });
 
       if (res.status === 401) {
+        console.warn("[Bulk Page] Parse returned 401, redirecting to login");
         router.replace("/");
         return;
       }
@@ -244,6 +248,10 @@ export default function BulkPayPage(): React.JSX.Element {
       };
 
       if (!res.ok || !data.batchId) {
+        console.error(
+          `[Bulk Page] Parse failed (${res.status}):`,
+          data,
+        );
         const errText =
           data.spoken ??
           data.message ??
@@ -256,6 +264,9 @@ export default function BulkPayPage(): React.JSX.Element {
       }
 
       const widgets = Array.isArray(data.widgets) ? data.widgets : [];
+      console.log(
+        `[Bulk Page] Parse succeeded: batchId=${data.batchId}, status=${data.status}, widgets=${widgets.length}`,
+      );
       setBatchId(data.batchId);
       setBatchStatus(data.status ?? "PARSED");
       setRunningTotalMinor(0);
@@ -265,7 +276,8 @@ export default function BulkPayPage(): React.JSX.Element {
       const spokenText = data.spoken ?? "Recipients parsed.";
       appendTurn("server", spokenText, widgets);
       speakServerMessage(spokenText);
-    } catch {
+    } catch (err) {
+      console.error("[Bulk Page] Network error during parse:", err);
       const netErr = "Unable to connect to the KarenPay service.";
       setErrorBanner(netErr);
       announceAssertive(netErr);
@@ -339,6 +351,9 @@ export default function BulkPayPage(): React.JSX.Element {
     setIsBusy(true);
     setErrorBanner(null);
     appendTurn("user", cleanInstruction);
+    console.log(
+      `[Bulk Page] Generating plan for batch ${batchId}: "${cleanInstruction}"...`,
+    );
 
     try {
       const res = await fetch(`/api/v1/bulk/${batchId}/plan`, {
@@ -349,6 +364,7 @@ export default function BulkPayPage(): React.JSX.Element {
       });
 
       if (res.status === 401) {
+        console.warn("[Bulk Page] Plan returned 401, redirecting to login");
         router.replace("/");
         return;
       }
@@ -362,6 +378,10 @@ export default function BulkPayPage(): React.JSX.Element {
       };
 
       if (!res.ok) {
+        console.error(
+          `[Bulk Page] Plan generation failed (${res.status}):`,
+          data,
+        );
         const errText =
           data.spoken ??
           data.message ??
@@ -374,6 +394,9 @@ export default function BulkPayPage(): React.JSX.Element {
       }
 
       const widgets = Array.isArray(data.widgets) ? data.widgets : [];
+      console.log(
+        `[Bulk Page] Plan generated successfully: status=${data.status}, totalMinor=${data.totalMinor}, widgets=${widgets.length}`,
+      );
       setBatchStatus(data.status ?? "PLANNED");
       if (typeof data.totalMinor === "number") {
         setPlannedTotalMinor(data.totalMinor);
@@ -381,7 +404,8 @@ export default function BulkPayPage(): React.JSX.Element {
       const spokenText = data.spoken ?? "Bulk payment plan ready.";
       appendTurn("server", spokenText, widgets);
       speakServerMessage(spokenText);
-    } catch {
+    } catch (err) {
+      console.error("[Bulk Page] Network error during plan generation:", err);
       const netErr = "Unable to create the bulk payment plan.";
       setErrorBanner(netErr);
       announceAssertive(netErr);
@@ -394,6 +418,9 @@ export default function BulkPayPage(): React.JSX.Element {
     async (targetBatchId: string) => {
       setIsBusy(true);
       setErrorBanner(null);
+      console.log(
+        `[Bulk Page] Activating next transfer item for batch ${targetBatchId}...`,
+      );
       try {
         const res = await fetch(`/api/v1/bulk/${targetBatchId}/next`, {
           method: "POST",
@@ -401,6 +428,7 @@ export default function BulkPayPage(): React.JSX.Element {
         });
 
         if (res.status === 401) {
+          console.warn("[Bulk Page] Next returned 401, redirecting to login");
           router.replace("/");
           return;
         }
@@ -420,6 +448,10 @@ export default function BulkPayPage(): React.JSX.Element {
         };
 
         if (!res.ok) {
+          console.error(
+            `[Bulk Page] Activate next item failed (${res.status}):`,
+            data,
+          );
           const errText =
             data.spoken ??
             data.message ??
@@ -428,6 +460,13 @@ export default function BulkPayPage(): React.JSX.Element {
           announceAssertive(errText);
           return;
         }
+
+        console.log(`[Bulk Page] Activated transfer item:`, {
+          batchStatus: data.status,
+          activeItem: data.activeItem,
+          runningTotalMinor: data.runningTotalMinor,
+          totalMinor: data.totalMinor,
+        });
 
         setBatchStatus(data.status ?? "IN_PROGRESS");
         setActiveItemId(data.activeItem?.itemId ?? null);
@@ -451,7 +490,8 @@ export default function BulkPayPage(): React.JSX.Element {
         speakServerMessage(spokenText, {
           skipSpeechSynthesis: hasTransferWidget,
         });
-      } catch {
+      } catch (err) {
+        console.error("[Bulk Page] Network error activating next item:", err);
         const netErr = "Unable to activate the next transfer in the queue.";
         setErrorBanner(netErr);
         announceAssertive(netErr);
@@ -466,6 +506,9 @@ export default function BulkPayPage(): React.JSX.Element {
     async (targetBatchId: string, planHash: string, requestHash: string) => {
       setIsBusy(true);
       setErrorBanner(null);
+      console.log(
+        `[Bulk Page] Confirming plan for batch ${targetBatchId} (planHash=${planHash})...`,
+      );
       try {
         const res = await fetch(
           `/api/v1/bulk/${targetBatchId}/confirm-plan`,
@@ -478,6 +521,9 @@ export default function BulkPayPage(): React.JSX.Element {
         );
 
         if (res.status === 401) {
+          console.warn(
+            "[Bulk Page] Confirm plan returned 401, redirecting to login",
+          );
           router.replace("/");
           return;
         }
@@ -490,6 +536,10 @@ export default function BulkPayPage(): React.JSX.Element {
         };
 
         if (!res.ok) {
+          console.error(
+            `[Bulk Page] Confirm plan failed (${res.status}):`,
+            data,
+          );
           const errText =
             data.spoken ??
             data.message ??
@@ -500,10 +550,14 @@ export default function BulkPayPage(): React.JSX.Element {
           return;
         }
 
+        console.log(
+          `[Bulk Page] Plan confirmed for batch ${targetBatchId}, activating first item...`,
+        );
         setBatchStatus(data.status ?? "CONFIRMED");
         // Immediately activate item 1 in the queue
         await activateNextItem(targetBatchId);
-      } catch {
+      } catch (err) {
+        console.error("[Bulk Page] Network error confirming plan:", err);
         const netErr = "Unable to confirm the payment plan.";
         setErrorBanner(netErr);
         announceAssertive(netErr);
@@ -518,6 +572,9 @@ export default function BulkPayPage(): React.JSX.Element {
     async (targetBatchId: string, itemId: string) => {
       setIsBusy(true);
       setErrorBanner(null);
+      console.log(
+        `[Bulk Page] Cancelling item ${itemId} in batch ${targetBatchId}...`,
+      );
       try {
         const res = await fetch(
           `/api/v1/bulk/${targetBatchId}/items/${itemId}/cancel`,
@@ -528,6 +585,9 @@ export default function BulkPayPage(): React.JSX.Element {
         );
 
         if (res.status === 401) {
+          console.warn(
+            "[Bulk Page] Cancel item returned 401, redirecting to login",
+          );
           router.replace("/");
           return;
         }
@@ -540,6 +600,10 @@ export default function BulkPayPage(): React.JSX.Element {
         };
 
         if (!res.ok) {
+          console.error(
+            `[Bulk Page] Cancel item ${itemId} failed (${res.status}):`,
+            data,
+          );
           const errText =
             data.spoken ??
             data.message ??
@@ -549,6 +613,9 @@ export default function BulkPayPage(): React.JSX.Element {
           return;
         }
 
+        console.log(
+          `[Bulk Page] Cancel item ${itemId} succeeded, new batchStatus=${data.batchStatus}`,
+        );
         const widgets = Array.isArray(data.widgets) ? data.widgets : [];
         const spokenText = data.spoken ?? "Transfer cancelled.";
         appendTurn("server", spokenText, widgets);
@@ -563,7 +630,8 @@ export default function BulkPayPage(): React.JSX.Element {
         } else if (batchStatus === "IN_PROGRESS" || batchStatus === "CONFIRMED") {
           await activateNextItem(targetBatchId);
         }
-      } catch {
+      } catch (err) {
+        console.error(`[Bulk Page] Network error cancelling item ${itemId}:`, err);
         const netErr = "Unable to cancel the transfer.";
         setErrorBanner(netErr);
         announceAssertive(netErr);
@@ -585,6 +653,9 @@ export default function BulkPayPage(): React.JSX.Element {
     if (!batchId) return;
     setIsBusy(true);
     setErrorBanner(null);
+    console.log(
+      `[Bulk Page] Cancelling remaining transfers for batch ${batchId}...`,
+    );
     try {
       const res = await fetch(`/api/v1/bulk/${batchId}/cancel-remaining`, {
         method: "POST",
@@ -592,6 +663,9 @@ export default function BulkPayPage(): React.JSX.Element {
       });
 
       if (res.status === 401) {
+        console.warn(
+          "[Bulk Page] Cancel remaining returned 401, redirecting to login",
+        );
         router.replace("/");
         return;
       }
@@ -606,6 +680,10 @@ export default function BulkPayPage(): React.JSX.Element {
       };
 
       if (!res.ok) {
+        console.error(
+          `[Bulk Page] Cancel remaining failed (${res.status}):`,
+          data,
+        );
         const errText =
           data.spoken ??
           data.message ??
@@ -615,6 +693,9 @@ export default function BulkPayPage(): React.JSX.Element {
         return;
       }
 
+      console.log(
+        `[Bulk Page] Cancel remaining succeeded for batch ${batchId}: status=${data.status}, paidMinor=${data.paidMinor}`,
+      );
       setBatchStatus(data.status ?? "CANCELLED");
       setActiveItemId(null);
       if (typeof data.paidMinor === "number") {
@@ -624,7 +705,11 @@ export default function BulkPayPage(): React.JSX.Element {
       const spokenText = data.spoken ?? "Cancelled remaining pending transfers.";
       appendTurn("server", spokenText, widgets);
       speakServerMessage(spokenText);
-    } catch {
+    } catch (err) {
+      console.error(
+        `[Bulk Page] Network error cancelling remaining transfers:`,
+        err,
+      );
       const netErr = "Unable to cancel remaining transfers.";
       setErrorBanner(netErr);
       announceAssertive(netErr);
@@ -640,6 +725,9 @@ export default function BulkPayPage(): React.JSX.Element {
       _paypalRef: string | null,
       spoken: string,
     ) => {
+      console.log(
+        `[Bulk Page] Item approved in batch ${targetBatchId}: mandateId=${_mandateId}, paypalRef=${_paypalRef}`,
+      );
       speakServerMessage(spoken);
       await activateNextItem(targetBatchId);
     },
@@ -648,6 +736,9 @@ export default function BulkPayPage(): React.JSX.Element {
 
   const handleTransferFailed = useCallback(
     async (targetBatchId: string, _mandateId: string, spoken: string) => {
+      console.warn(
+        `[Bulk Page] Item failed in batch ${targetBatchId}: mandateId=${_mandateId}, spoken="${spoken}"`,
+      );
       speakServerMessage(spoken);
       await activateNextItem(targetBatchId);
     },

@@ -459,6 +459,9 @@ function PayTerminalInner(): React.JSX.Element {
       setClarificationSpoken(null);
       setClarificationCandidates([]);
       setIsSubmittingIntent(true);
+      console.log(
+        `[Single Pay UI] Submitting transcript to /api/v1/intent: "${cleanTranscript}"`,
+      );
 
       try {
         const intentRes = await fetch("/api/v1/intent", {
@@ -469,6 +472,7 @@ function PayTerminalInner(): React.JSX.Element {
         });
 
         if (intentRes.status === 401) {
+          console.warn("[Single Pay UI] Intent returned 401, redirecting to login");
           router.replace("/");
           return;
         }
@@ -476,6 +480,10 @@ function PayTerminalInner(): React.JSX.Element {
         const intentData = (await intentRes.json()) as IntentResponse;
 
         if (!intentRes.ok) {
+          console.error(
+            `[Single Pay UI] Intent recognition failed (${intentRes.status}):`,
+            intentData,
+          );
           const errSpoken =
             intentData.spoken ??
             intentData.message ??
@@ -486,6 +494,12 @@ function PayTerminalInner(): React.JSX.Element {
           setIsSubmittingIntent(false);
           return;
         }
+
+        console.log(`[Single Pay UI] Intent recognized successfully:`, {
+          needsClarification: intentData.needsClarification,
+          proposal: intentData.proposal,
+          candidatesCount: intentData.candidates?.length,
+        });
 
         if (intentData.needsClarification) {
           const spokenPrompt =
@@ -503,6 +517,7 @@ function PayTerminalInner(): React.JSX.Element {
         }
 
         if (!intentData.proposal) {
+          console.warn("[Single Pay UI] Intent missing proposal");
           const fallbackErr = "Could not build a payment proposal.";
           setErrorBanner(fallbackErr);
           announceAssertive(fallbackErr);
@@ -533,6 +548,11 @@ function PayTerminalInner(): React.JSX.Element {
             nextProposal.payeeAccountNumber;
         }
 
+        console.log(`[Single Pay UI] Requesting mandate creation from /api/v1/mandates...`, {
+          proposal: nextProposal,
+          requestHash: computedReqHash,
+        });
+
         const mandateRes = await fetch("/api/v1/mandates", {
           method: "POST",
           credentials: "include",
@@ -545,6 +565,7 @@ function PayTerminalInner(): React.JSX.Element {
         });
 
         if (mandateRes.status === 401) {
+          console.warn("[Single Pay UI] Mandate creation returned 401, redirecting to login");
           router.replace("/");
           return;
         }
@@ -554,6 +575,10 @@ function PayTerminalInner(): React.JSX.Element {
         };
 
         if (!mandateRes.ok) {
+          console.error(
+            `[Single Pay UI] Mandate creation rejected (${mandateRes.status}):`,
+            mandateData,
+          );
           const rejectSpoken =
             mandateData.spoken ??
             mandateData.message ??
@@ -566,13 +591,20 @@ function PayTerminalInner(): React.JSX.Element {
           return;
         }
 
+        console.log(`[Single Pay UI] Mandate created successfully:`, {
+          mandateId: mandateData.mandateId,
+          hash: mandateData.mandateHash,
+          expiresAt: mandateData.expiresAt,
+        });
+
         setMandate(mandateData);
         setStep(3);
         setIsSubmittingIntent(false);
 
         // Immediately speak server's exact response.spoken and enforce readout lock
         speakServerText(mandateData.spoken, { isMandatoryReadout: true });
-      } catch {
+      } catch (err) {
+        console.error("[Single Pay UI] Network or processing error during transfer creation:", err);
         const netErr = "Unable to connect to the payment service.";
         setErrorBanner(netErr);
         announceAssertive(netErr);
@@ -634,6 +666,15 @@ function PayTerminalInner(): React.JSX.Element {
     setErrorBanner(null);
 
     try {
+      console.log(
+        `[Single Pay UI] Starting WebAuthn passkey authentication for mandate ${mandate.mandateId}...`,
+        {
+          rpId: mandate.approvalOptions.rpId || window.location.hostname,
+          challenge: mandate.approvalOptions.challenge,
+          allowCredentialsCount:
+            mandate.approvalOptions.allowCredentials?.length ?? 0,
+        },
+      );
       const credential = await startAuthentication({
         optionsJSON: {
           challenge: mandate.approvalOptions.challenge,
@@ -645,6 +686,10 @@ function PayTerminalInner(): React.JSX.Element {
         },
       });
 
+      console.log(
+        `[Single Pay UI] Passkey signature acquired (${credential.id}), sending approval...`,
+      );
+
       const assertionBody: Record<string, unknown> = {
         ...credential,
       };
@@ -652,6 +697,9 @@ function PayTerminalInner(): React.JSX.Element {
       // If the Judge Demo Tamper Switch is enabled, mutate the signed WebAuthn clientDataJSON
       // challenge after readout so the backend's cryptographic verification rejects it with 401.
       if (tamperEnabled && credential.response?.clientDataJSON) {
+        console.warn(
+          "[Single Pay UI] Tamper switch is ACTIVE: mutating clientDataJSON challenge",
+        );
         const tamperedClientData = btoa(
           JSON.stringify({
             type: "webauthn.get",
@@ -668,6 +716,9 @@ function PayTerminalInner(): React.JSX.Element {
         };
       }
 
+      console.log(
+        `[Single Pay UI] Submitting passkey approval to /api/v1/mandates/${mandate.mandateId}/approve...`,
+      );
       const res = await fetch(`/api/v1/mandates/${mandate.mandateId}/approve`, {
         method: "POST",
         credentials: "include",
@@ -676,10 +727,17 @@ function PayTerminalInner(): React.JSX.Element {
       });
 
       const data = (await res.json()) as MandateApproveResponse;
+      console.log(
+        `[Single Pay UI] Approval response status=${res.status}:`,
+        data,
+      );
       setApprovalResult(data);
       setStep(4);
 
       if (!res.ok || data.code === "APPROVAL_REJECTED") {
+        console.warn(
+          `[Single Pay UI] Approval rejected/failed: code=${data.code}, message=${data.message}`,
+        );
         setApprovalRejected(true);
         setErrorBanner(
           `401 ${data.code || "APPROVAL_REJECTED"}: ${data.spoken || data.message}`,
@@ -689,11 +747,18 @@ function PayTerminalInner(): React.JSX.Element {
           isMandatoryReadout: false,
         });
       } else {
+        console.log(
+          `[Single Pay UI] Approval succeeded (PAID): paypalRef=${data.paypalRef}`,
+        );
         setApprovalRejected(false);
         announcePolite(data.spoken);
         speakServerText(data.spoken, { isMandatoryReadout: false });
       }
-    } catch {
+    } catch (err) {
+      console.error(
+        `[Single Pay UI] Passkey authentication or approval exception:`,
+        err,
+      );
       const errMsg =
         "Passkey verification was cancelled or failed. You can also approve with your 6-digit PIN below.";
       setErrorBanner(errMsg);
@@ -738,6 +803,11 @@ function PayTerminalInner(): React.JSX.Element {
         ? "tampered_challenge_after_readout"
         : mandate.mandateHash;
 
+      console.log(
+        `[Single Pay UI] Submitting PIN fallback approval for mandate ${mandate.mandateId}...`,
+        { tampered: tamperEnabled, challenge: challengeToSend },
+      );
+
       const res = await fetch(`/api/v1/mandates/${mandate.mandateId}/approve`, {
         method: "POST",
         credentials: "include",
@@ -750,10 +820,17 @@ function PayTerminalInner(): React.JSX.Element {
       });
 
       const data = (await res.json()) as MandateApproveResponse;
+      console.log(
+        `[Single Pay UI] PIN approval response status=${res.status}:`,
+        data,
+      );
       setApprovalResult(data);
       setStep(4);
 
       if (!res.ok || data.code === "APPROVAL_REJECTED") {
+        console.warn(
+          `[Single Pay UI] PIN approval rejected: code=${data.code}, message=${data.message}`,
+        );
         setApprovalRejected(true);
         setErrorBanner(
           `401 ${data.code || "APPROVAL_REJECTED"}: ${data.spoken || data.message}`,
@@ -763,11 +840,18 @@ function PayTerminalInner(): React.JSX.Element {
           isMandatoryReadout: false,
         });
       } else {
+        console.log(
+          `[Single Pay UI] PIN approval succeeded: paypalRef=${data.paypalRef}`,
+        );
         setApprovalRejected(false);
         announcePolite(data.spoken);
         speakServerText(data.spoken, { isMandatoryReadout: false });
       }
-    } catch {
+    } catch (err) {
+      console.error(
+        `[Single Pay UI] PIN approval exception:`,
+        err,
+      );
       const errMsg =
         "Could not verify your 6-digit PIN. No test payment was sent.";
       setErrorBanner(errMsg);

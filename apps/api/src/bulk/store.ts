@@ -283,7 +283,10 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
         return { kind: "non_bulk" };
       }
 
+      console.log(`[Bulk Hook] Resolving receiver for bulk mandate ${mandate.id} (account ${accountId})...`);
+
       if (!item || item.mandate_id !== mandate.id) {
+        console.warn(`[Bulk Hook] Mandate ID mismatch: expected ${mandate.id}, item has ${item?.mandate_id}`);
         return {
           kind: "bulk_failed",
           reason: "BATCH_ITEM_MANDATE_ID_MISMATCH",
@@ -294,6 +297,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
 
       const batch = await store.getOwnedBatch(accountId, item.batch_id);
       if (!batch || batch.account_id !== accountId) {
+        console.warn(`[Bulk Hook] Batch ownership mismatch for batch ${item.batch_id}`);
         return {
           kind: "bulk_failed",
           reason: "BATCH_OWNERSHIP_MISMATCH",
@@ -306,6 +310,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
         batch.status !== "CONFIRMED" &&
         batch.status !== "IN_PROGRESS"
       ) {
+        console.warn(`[Bulk Hook] Batch ${batch.id} is not active (status: ${batch.status})`);
         await store.updateBatchItem(item.id, { status: "FAILED" });
         return {
           kind: "bulk_failed",
@@ -316,6 +321,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
       }
 
       if (item.status !== "ACTIVE" && item.status !== "CONSUMED") {
+        console.warn(`[Bulk Hook] Batch item ${item.id} is not active or consumed (status: ${item.status})`);
         return {
           kind: "bulk_failed",
           reason: "BATCH_ITEM_NOT_ACTIVE",
@@ -328,6 +334,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
         !mandate.payee_account_number ||
         item.account_number !== mandate.payee_account_number
       ) {
+        console.warn(`[Bulk Hook] Account number mismatch: item=${item.account_number}, mandate=${mandate.payee_account_number}`);
         await store.updateBatchItem(item.id, { status: "FAILED" });
         return {
           kind: "bulk_failed",
@@ -338,6 +345,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
       }
 
       if (!item.resolved_name) {
+        console.warn(`[Bulk Hook] Item ${item.id} has no resolved name`);
         await store.updateBatchItem(item.id, { status: "FAILED" });
         return {
           kind: "bulk_failed",
@@ -353,7 +361,8 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
           item.resolved_name,
           item.bank_name,
         );
-      } catch {
+      } catch (err) {
+        console.warn(`[Bulk Hook] Failed to compose payee name for item ${item.id}:`, err);
         await store.updateBatchItem(item.id, { status: "FAILED" });
         return {
           kind: "bulk_failed",
@@ -364,6 +373,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
       }
 
       if (expectedPayeeName !== mandate.payee_name) {
+        console.warn(`[Bulk Hook] Payee name mismatch: expected '${expectedPayeeName}', mandate has '${mandate.payee_name}'`);
         await store.updateBatchItem(item.id, { status: "FAILED" });
         return {
           kind: "bulk_failed",
@@ -378,6 +388,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
         Number(item.amount_minor) !== Number(mandate.amount_minor) ||
         batch.currency !== mandate.currency
       ) {
+        console.warn(`[Bulk Hook] Amount or currency mismatch: item=${item.amount_minor} ${batch.currency}, mandate=${mandate.amount_minor} ${mandate.currency}`);
         await store.updateBatchItem(item.id, { status: "FAILED" });
         return {
           kind: "bulk_failed",
@@ -399,6 +410,17 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
         directoryEntry.account_name !== item.resolved_name ||
         !directoryEntry.paypal_sandbox_email
       ) {
+        console.warn(`[Bulk Hook] Sandbox directory entry missing or mismatch for item ${item.id}:`, {
+          accountNumber: item.account_number,
+          bankName: item.bank_name,
+          resolvedName: item.resolved_name,
+          foundEntry: directoryEntry
+            ? {
+                accountName: directoryEntry.account_name,
+                email: directoryEntry.paypal_sandbox_email,
+              }
+            : null,
+        });
         await store.updateBatchItem(item.id, { status: "FAILED" });
         return {
           kind: "bulk_failed",
@@ -408,6 +430,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
         };
       }
 
+      console.log(`[Bulk Hook] Successfully resolved receiver email for item ${item.id}: ${directoryEntry.paypal_sandbox_email}`);
       return {
         kind: "bulk_resolved",
         receiverEmail: directoryEntry.paypal_sandbox_email,

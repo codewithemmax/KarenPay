@@ -251,14 +251,24 @@ export function createMandateRouter(config: MandateConfig): Router {
   router.post("/", async (request, response) => {
     const accountId = getAuthenticatedAccountId(request, config.sessionSecret);
     if (!accountId) {
+      console.warn("[Mandates] Creation rejected: missing or invalid session cookie");
       return response.status(401).json({ code: "AUTH_REQUIRED", message: "Please sign in before creating a test payment." });
     }
 
     try {
+      console.log(`[Mandates] Creating mandate for account ${accountId}...`, {
+        proposal: request.body?.proposal,
+      });
       const result = await createAccountMandate(config, accountId, request.body);
       if (!result.accepted) {
+        console.warn(
+          `[Mandates] Mandate rejected: status=${result.status}, code=${result.code}, message="${result.message}"`,
+        );
         return response.status(result.status).json({ code: result.code, message: result.message });
       }
+      console.log(
+        `[Mandates] Mandate created successfully: id=${result.mandateId}, hash=${result.mandateHash}`,
+      );
       return response.status(201).json({
         mandateId: result.mandateId,
         mandateHash: result.mandateHash,
@@ -268,6 +278,7 @@ export function createMandateRouter(config: MandateConfig): Router {
         approvalOptions: result.approvalOptions,
       });
     } catch (error) {
+      console.error("[Mandates] Mandate creation exception:", error);
       if (error instanceof z.ZodError) {
         return response.status(400).json({ code: "INVALID_REQUEST", message: "The payment request is invalid." });
       }
