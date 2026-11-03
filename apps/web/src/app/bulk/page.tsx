@@ -976,38 +976,38 @@ export default function BulkPayPage(): React.JSX.Element {
       {showAmountComposer ? (
         <form
           onSubmit={(e) => void handlePlanSubmit(e)}
-          className="flex flex-col gap-4 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-5 shadow-card"
+          className="flex flex-col gap-5 rounded-card border border-[var(--divider)] bg-[var(--surface)] p-6 shadow-card"
         >
           <div>
             <label
               htmlFor={amountInputId}
-              className="block text-[16px] font-bold text-[var(--text)]"
+              className="block max-w-[34rem] text-[18px] font-bold leading-snug text-[var(--text)]"
             >
               Amount instruction (for example: 25 each or 50 dollars each)
             </label>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">
               Per-transfer limit is $100.00 and batch total limit is $300.00.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
               onClick={() => setInstructionText("25 each")}
-              className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-[var(--border-strong)] bg-[var(--surface-tint)] px-3.5 py-2 text-[13px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-input border border-[var(--border-strong)] bg-[var(--surface-tint)] px-5 py-2 text-[14px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
             >
               25 each
             </button>
             <button
               type="button"
               onClick={() => setInstructionText("50 dollars each")}
-              className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-[var(--border-strong)] bg-[var(--surface-tint)] px-3.5 py-2 text-[13px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
+              className="inline-flex min-h-[48px] items-center justify-center rounded-input border border-[var(--border-strong)] bg-[var(--surface-tint)] px-5 py-2 text-[14px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
             >
               50 dollars each
             </button>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
             <input
               id={amountInputId}
               type="text"
@@ -1015,7 +1015,7 @@ export default function BulkPayPage(): React.JSX.Element {
               value={instructionText}
               onChange={(e) => setInstructionText(e.target.value)}
               placeholder="25 each"
-              className="min-h-[64px] flex-1 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--bg)] px-4 text-[16px] font-bold text-[var(--text)] placeholder:text-[var(--text-muted)]"
+              className="col-span-2 min-h-[64px] min-w-0 rounded-input border-2 border-[var(--border-strong)] bg-[var(--bg)] px-4 text-[16px] font-bold text-[var(--text)] placeholder:text-[var(--text-muted)] sm:col-span-1"
             />
 
             <button
@@ -1033,7 +1033,7 @@ export default function BulkPayPage(): React.JSX.Element {
                   ? "Stop voice capture"
                   : "Speak amount instruction"
               }
-              className="inline-flex min-h-[64px] min-w-[64px] items-center justify-center gap-2 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-4 text-[15px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
+              className="inline-flex min-h-[64px] min-w-0 items-center justify-center gap-2 rounded-input border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-4 text-[15px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
             >
               {isListening ? (
                 <>
@@ -1052,7 +1052,7 @@ export default function BulkPayPage(): React.JSX.Element {
               type="submit"
               disabled={isBusy}
               data-testid="bulk-plan-submit"
-              className="inline-flex min-h-[64px] items-center justify-center gap-2 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--primary)] px-6 text-[16px] font-bold text-[#FFFFFF] transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-50"
+              className="inline-flex min-h-[64px] min-w-0 items-center justify-center gap-2 rounded-input border-2 border-[var(--border-strong)] bg-[var(--primary)] px-5 text-[16px] font-bold text-[#FFFFFF] transition-colors hover:bg-[var(--primary-hover)] disabled:opacity-50"
             >
               <Send className="h-5 w-5 shrink-0" aria-hidden="true" />
               <span>{isBusy ? "Planning…" : "Send"}</span>

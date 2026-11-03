@@ -252,7 +252,10 @@ class SupabaseAuthStore {
       },
     });
     if (!response.ok) {
-      throw new Error(`Supabase request failed with status ${response.status}`);
+      const errorBody = await response.text();
+      throw new Error(
+        `Supabase request failed with status ${response.status}: ${errorBody.slice(0, 500)}`,
+      );
     }
     const text = await response.text();
     return (text ? JSON.parse(text) : undefined) as T;
@@ -549,6 +552,7 @@ export function createAuthRouter(config: AuthConfig): Router {
           spoken: "Please enter your name and 6-digit PIN.",
         });
       }
+      console.error("[Auth] PIN login failed unexpectedly:", error);
       return response.status(500).json({
         code: "PIN_LOGIN_FAILED",
         message: "Could not sign in with your PIN. Please try again.",
@@ -901,12 +905,26 @@ function encodeBytea(bytes: Uint8Array): string {
 }
 
 function decodeBytea(value: string): WebAuthnCredential["publicKey"] {
-  if (!value.startsWith("\\x")) {
-    throw new Error("Stored passkey public key is not PostgreSQL bytea hex");
+  const normalized = value.trim();
+  let bytes: Buffer;
+
+  if (/^\\x(?:[0-9a-f]{2})+$/i.test(normalized)) {
+    bytes = Buffer.from(normalized.slice(2), "hex");
+  } else if (
+    normalized.length > 0 &&
+    normalized.length % 4 === 0 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(normalized)
+  ) {
+    bytes = Buffer.from(normalized, "base64");
+  } else {
+    throw new Error("Stored passkey public key is not valid bytea data");
   }
-  return new Uint8Array(
-    Buffer.from(value.slice(2), "hex"),
-  ) as WebAuthnCredential["publicKey"];
+
+  if (bytes.length === 0) {
+    throw new Error("Stored passkey public key is empty");
+  }
+
+  return new Uint8Array(bytes) as WebAuthnCredential["publicKey"];
 }
 
 function sendAuthError(response: Response, error: unknown): void {

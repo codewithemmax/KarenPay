@@ -27,6 +27,7 @@ import React, {
 } from "react";
 import { Button } from "../../components/Button";
 import { useAnnounce } from "../../components/LiveRegions";
+import { useVoiceOnlyMode } from "../../components/VoiceModeToggle";
 import { formatUsdMinor } from "../../lib/demoData";
 
 type FlowStep = 1 | 2 | 3 | 4;
@@ -136,6 +137,7 @@ function PayTerminalInner(): React.JSX.Element {
   const textInputId = useId();
   const tamperSwitchId = useId();
   const { announcePolite, announceAssertive } = useAnnounce();
+  const [isVoiceOnlyMode, setVoiceOnlyMode] = useVoiceOnlyMode();
 
   const [contacts, setContacts] = useState<SavedContact[]>([]);
   const [step, setStep] = useState<FlowStep>(1);
@@ -905,45 +907,38 @@ function PayTerminalInner(): React.JSX.Element {
 
   const steps: { id: FlowStep; label: string }[] = [
     { id: 1, label: "1. Understand" },
-    { id: 2, label: "2. Build Mandate" },
-    { id: 3, label: "3. Read Aloud" },
+    { id: 2, label: "2. Review details" },
+    { id: 3, label: "3. Read aloud" },
     { id: 4, label: "4. Confirm" },
   ];
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
+    <div className={`flex flex-col gap-7 pb-8 pt-7 ${isVoiceOnlyMode ? "voice-only-payment" : ""}`}>
       {/* Top Bar */}
       <div className="flex items-center justify-between gap-3">
         <Link
           href="/home"
-          className="inline-flex min-h-[48px] items-center gap-2 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2 text-[16px] font-bold text-[var(--text)] no-underline hover:bg-[var(--surface-tint)]"
+          className="inline-flex min-h-[48px] items-center gap-2 rounded-full bg-[var(--surface-tint)] px-4 py-2 text-[16px] font-bold text-[var(--text)] no-underline hover:bg-[var(--peach)]"
         >
           <ArrowLeft className="h-5 w-5" aria-hidden="true" />
           <span>Back to Home</span>
         </Link>
-        <span className="inline-flex min-h-[36px] items-center rounded-full border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-3.5 py-1 text-[14px] font-bold text-[var(--text)]">
-          Sandbox Consent Terminal
-        </span>
+        <button
+          type="button"
+          onClick={() => setVoiceOnlyMode(!isVoiceOnlyMode)}
+          className="inline-flex min-h-[36px] items-center rounded-full bg-[var(--surface-tint)] px-3.5 py-1 text-[14px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
+        >
+          {isVoiceOnlyMode ? "Exit voice-only mode" : "Voice-only mode"}
+        </button>
       </div>
 
-      {/* Page Heading */}
-      <div>
-        <h1
-          ref={headingRef}
-          tabIndex={-1}
-          className="text-[28px] font-bold leading-[1.2] text-[var(--text)] outline-none"
-        >
-          Voice Payment &amp; Consent Terminal
-        </h1>
-        <p className="mt-1 text-[16px] font-normal text-[var(--text-muted)]">
-          Every test payment is checked against your rules, read aloud word for
-          word, and locked until the readout finishes.
-        </p>
-      </div>
+      <h1 ref={headingRef} tabIndex={-1} className="sr-only">
+        Voice payment and consent
+      </h1>
 
       {/* Top 4-Step Security Stepper */}
-      <nav aria-label="Payment security steps">
-        <ol className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      <nav aria-label="Payment security steps" className={isVoiceOnlyMode ? "sr-only" : undefined}>
+        <ol className="grid grid-cols-4 gap-2">
           {steps.map((item) => {
             const isCurrent = step === item.id;
             const isCompleted = step > item.id || Boolean(approvalResult);
@@ -951,23 +946,24 @@ function PayTerminalInner(): React.JSX.Element {
               <li
                 key={item.id}
                 aria-current={isCurrent ? "step" : undefined}
-                className={`flex min-h-[48px] items-center gap-2 rounded-xl border-2 px-3 py-2 text-[14px] font-bold ${
-                  isCurrent
-                    ? "border-[var(--border-strong)] bg-[var(--primary)] text-[#FFFFFF]"
-                    : isCompleted
-                      ? "border-[var(--border-strong)] bg-[var(--surface-tint)] text-[var(--text)]"
-                      : "border-[var(--border-strong)] bg-[var(--surface)] text-[var(--text-muted)]"
-                }`}
+                className="flex min-w-0 flex-col items-center gap-1.5 text-center text-[12px] font-bold text-[var(--text)] sm:text-[14px]"
               >
-                {isCompleted ? (
-                  <CheckCircle2
-                    className="h-4 w-4 shrink-0"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
-                )}
-                <span>{item.label}</span>
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                    isCurrent
+                      ? "bg-[var(--primary)] text-white"
+                      : isCompleted
+                        ? "bg-[var(--surface-tint)] text-[var(--text)]"
+                        : "border border-[var(--divider)] bg-[var(--surface)] text-[var(--text)]"
+                  }`}
+                >
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <span>{item.id}</span>
+                  )}
+                </span>
+                <span>{item.label.replace(/^\d+\.\s*/, "")}</span>
               </li>
             );
           })}
@@ -998,44 +994,67 @@ function PayTerminalInner(): React.JSX.Element {
       ) : null}
 
       {/* 2-Column Blind + Sighted Bridge on Desktop (1280x800), Linear on Mobile (390x844) */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start lg:gap-8">
+      <div className={isVoiceOnlyMode ? "block" : "grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start lg:gap-8"}>
         {/* LEFT COLUMN: Voice Capture, Readout Lock & Biometric Approval */}
-        <div className="flex flex-col gap-6">
+        <div className={isVoiceOnlyMode ? "mx-auto flex max-w-[560px] flex-col gap-6" : "flex flex-col gap-6"}>
           {/* STEP 1: Voice + Text Request Card */}
           <section
             aria-labelledby="step-1-heading"
-            className="flex flex-col gap-4 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-5"
+            className={`flex flex-col gap-5 rounded-card border border-[var(--divider)] bg-[var(--surface)] p-7 ${
+              isVoiceOnlyMode ? "min-h-[420px] justify-center text-center" : ""
+            }`}
           >
             <div className="flex items-center justify-between gap-2">
               <h2
                 id="step-1-heading"
-                className="text-[20px] font-bold text-[var(--text)]"
+                className="sr-only"
               >
                 Step 1: Speak or Type Request
               </h2>
-              <span className="rounded-full border border-[var(--border-strong)] bg-[var(--surface-tint)] px-3 py-1 text-[14px] font-bold text-[var(--text)]">
-                {isListening ? "Listening..." : "Ready"}
+              <span
+                role="status"
+                aria-live="polite"
+                className="inline-flex min-h-[36px] items-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-tint)] px-4 py-1 text-[15px] font-bold text-[var(--text)]"
+              >
+                {isListening ? "Listening…" : "Ready to listen"}
               </span>
             </div>
 
-            <p className="text-[16px] text-[var(--text-muted)]">
+            <p className="sr-only">
               Speak a saved contact name (or recipient name and account number
               digits), the amount, and currency.
             </p>
 
+            <div className="flex items-center justify-center gap-1.5" aria-hidden="true">
+              {[10, 18, 28, 36, 28, 18, 10].map((height, index) => (
+                <span
+                  key={index}
+                  className="w-1.5 rounded-full bg-[var(--surface-tint)]"
+                  style={{ height }}
+                />
+              ))}
+            </div>
+
             {/* Primary 64px Voice Capture Button */}
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex flex-col gap-3">
               <Button
                 type="button"
                 variant="primary"
                 onClick={isListening ? stopListening : startListening}
-                className="flex-1"
+                className="min-h-[76px] px-5 text-[20px] shadow-none"
               >
                 <Mic className="h-6 w-6 shrink-0" aria-hidden="true" />
-                <span>
-                  {isListening
-                    ? "Listening... Tap to Pause"
-                    : "Hold or Tap to Speak Request"}
+                <span className="text-center leading-tight">
+                  {isListening ? (
+                    <>
+                      <span className="block">Listening…</span>
+                      <span className="mt-1 block text-[16px] font-semibold">
+                        Tap to pause
+                      </span>
+                    </>
+                  ) : (
+                    "Hold or tap to speak"
+                  )}
                 </span>
               </Button>
 
@@ -1044,16 +1063,16 @@ function PayTerminalInner(): React.JSX.Element {
                   type="button"
                   variant="secondary"
                   onClick={() => void submitTranscript(transcript)}
-                  className="min-h-[64px]"
+                  className="min-h-[56px] border border-[var(--divider)] bg-[var(--surface-tint)] px-5 text-[18px] shadow-none"
                 >
                   <Square className="h-5 w-5 shrink-0" aria-hidden="true" />
-                  <span>Done Speaking</span>
+                  <span>Finish speaking</span>
                 </Button>
               ) : null}
             </div>
 
             {/* Accessible Fallback Text Input */}
-            <form
+            {!isVoiceOnlyMode ? <form
               onSubmit={(e) => {
                 e.preventDefault();
                 void submitTranscript(transcript);
@@ -1086,7 +1105,7 @@ function PayTerminalInner(): React.JSX.Element {
                     : "Build Payment Mandate"}
                 </span>
               </Button>
-            </form>
+            </form> : null}
 
             {/* Clarification Prompt (when needsClarification === true) */}
             {clarificationSpoken ? (
@@ -1118,7 +1137,9 @@ function PayTerminalInner(): React.JSX.Element {
           {mandate ? (
             <section
               aria-labelledby="step-3-heading"
-              className="flex flex-col gap-4 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-5"
+              className={`flex flex-col gap-4 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-5 ${
+                isVoiceOnlyMode ? "text-center" : ""
+              }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <h2
@@ -1151,12 +1172,13 @@ function PayTerminalInner(): React.JSX.Element {
 
               {/* Exact Server Readout Box */}
               <div className="rounded-xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4">
-                <p className="text-[14px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  Deterministic Server Readout (Spoken Verbatim)
+                <p className="flex items-center gap-2 text-[14px] font-bold text-[var(--text-muted)]">
+                  <Volume2 className="h-4 w-4" aria-hidden="true" />
+                  Reading payment details aloud
                 </p>
                 <p
                   data-testid="server-spoken-readout"
-                  className="mt-2 text-[18px] font-bold leading-[1.5] text-[var(--text)]"
+                  className="mt-3 rounded-input bg-[var(--surface-tint)] p-4 text-[18px] font-bold leading-[1.5] text-[var(--text)]"
                 >
                   &ldquo;{mandate.spoken}&rdquo;
                 </p>
@@ -1193,7 +1215,7 @@ function PayTerminalInner(): React.JSX.Element {
                 ) : null}
               </div>
 
-              {/* Boxed Judge Demo Control: Tamper Amount / Challenge After Readout */}
+              {/* Boxed demo control for the safety rejection flow */}
               <div className="rounded-xl border-2 border-[var(--border-strong)] bg-[var(--warning-bg)] p-4 text-[var(--warning-text)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-2.5">
@@ -1206,11 +1228,11 @@ function PayTerminalInner(): React.JSX.Element {
                         htmlFor={tamperSwitchId}
                         className="block cursor-pointer text-[16px] font-bold text-[var(--warning-text)]"
                       >
-                        Demo Attack: Tamper Amount / Challenge After Readout
+                        Demo safety check
                       </label>
                       <p className="mt-1 text-[14px] font-normal text-[var(--warning-text)]">
-                        Simulates a compromised client mutating the WebAuthn
-                        challenge after the readout finishes.
+                        Shows that approval is rejected if the payment details
+                        change after you hear the readout.
                       </p>
                     </div>
                   </div>
@@ -1354,7 +1376,7 @@ function PayTerminalInner(): React.JSX.Element {
                       href="/activity"
                       className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-xl border-2 border-[var(--border-strong)] bg-[var(--primary)] px-4 py-2.5 text-[16px] font-bold text-[#FFFFFF] no-underline hover:bg-[var(--primary-hover)]"
                     >
-                      View Audit Trail
+                      View activity
                     </Link>
                     <button
                       type="button"
@@ -1370,143 +1392,81 @@ function PayTerminalInner(): React.JSX.Element {
           ) : null}
         </div>
 
-        {/* RIGHT COLUMN: Visual Mandate Node Tree Card (--balance-card #1F0D09 surface with --sun connector lines) */}
+        {/* RIGHT COLUMN: Plain-English transfer summary for sighted companions */}
         <section
-          aria-labelledby="mandate-tree-heading"
-          className="flex flex-col gap-5 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--balance-card)] p-6 text-[#FFFFFF]"
+          aria-labelledby="transfer-summary-heading"
+          className={`flex flex-col gap-5 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--balance-card)] p-6 text-[#FFFFFF] ${
+            isVoiceOnlyMode ? "hidden" : ""
+          }`}
         >
           <div className="flex items-center justify-between gap-2">
             <div>
               <span className="text-[14px] font-bold uppercase tracking-wider text-[var(--peach)]">
-                Sighted Companion &amp; Judge Inspector
+                Transfer summary
               </span>
               <h2
-                id="mandate-tree-heading"
+                id="transfer-summary-heading"
                 className="mt-1 text-[22px] font-bold text-[#FFFFFF]"
               >
-                Cryptographic Mandate Node Tree
+                Check the details
               </h2>
             </div>
             <span className="inline-flex min-h-[36px] items-center rounded-full bg-[var(--sun)] px-3 py-1 text-[14px] font-bold text-[var(--text)]">
-              {mandate ? "Mandate Bound" : "Awaiting Intent"}
+              {mandate ? "Ready to approve" : "Waiting for details"}
             </span>
           </div>
 
-          {/* Top Node: Spoken Request (requestConstraints) */}
           <div className="rounded-xl border-2 border-[var(--sun)] bg-[#2B140E] p-4">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[14px] font-bold text-[var(--peach)]">
-                TOP NODE: SPOKEN REQUEST CONSTRAINTS
-              </span>
-              <span className="num rounded bg-[var(--sun)] px-2 py-0.5 text-[12px] font-bold text-[var(--text)]">
-                action: send_money
-              </span>
+            <div className="flex items-center gap-2 text-[14px] font-bold text-[var(--peach)]">
+              <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+              <span>Verified recipient</span>
             </div>
-            <p className="mt-2 text-[16px] font-bold text-[#FFFFFF]">
-              {transcript ? `"${transcript}"` : "Awaiting spoken request..."}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-3 text-[14px] text-[var(--peach)]">
-              <span>
-                Max Allowed:{" "}
-                <strong className="num text-[#FFFFFF]">
-                  {formatUsdMinor(displayAmountMinor)}
-                </strong>
-              </span>
-              <span>
-                Request Hash:{" "}
-                <strong className="num text-[#FFFFFF]">
-                  {requestHash ? truncateHash(requestHash) : "pending..."}
-                </strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Connector Lines in --sun (#FFCC6B) */}
-          <div
-            aria-hidden="true"
-            className="flex flex-col items-center justify-center"
-          >
-            <div className="h-5 w-1 bg-[var(--sun)]" />
-            <div className="h-1 w-3/4 bg-[var(--sun)]" />
-            <div className="flex w-3/4 justify-between">
-              <div className="h-5 w-1 bg-[var(--sun)]" />
-              <div className="h-5 w-1 bg-[var(--sun)]" />
-            </div>
-          </div>
-
-          {/* Left & Right Branches */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Left Branch: @karenpay/core Checks */}
-            <div className="flex flex-col gap-3 rounded-xl border-2 border-[var(--sun)] bg-[#2B140E] p-4">
-              <span className="text-[14px] font-bold uppercase tracking-wider text-[var(--peach)]">
-                Left Branch: @karenpay/core
-              </span>
-              <div className="flex items-center justify-between rounded-lg bg-[#1F0D09] px-3 py-2.5">
-                <span className="num text-[14px] font-bold text-[#FFFFFF]">
-                  checkIntent
-                </span>
-                <span className="rounded bg-[var(--sun)] px-2.5 py-0.5 text-[13px] font-bold text-[var(--text)]">
-                  {mandate ? "PASS" : "WAIT"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-[#1F0D09] px-3 py-2.5">
-                <span className="num text-[14px] font-bold text-[#FFFFFF]">
-                  checkLimits
-                </span>
-                <span className="rounded bg-[var(--sun)] px-2.5 py-0.5 text-[13px] font-bold text-[var(--text)]">
-                  {mandate ? "PASS" : "WAIT"}
-                </span>
-              </div>
-              <p className="text-[14px] text-[var(--peach)]">
-                Pure deterministic policy guard verifies recipient allowlist and
-                $500.00 sandbox cap.
-              </p>
-            </div>
-
-            {/* Right Branch: Verified Recipient, Amount, Countdown, Mandate Hash */}
-            <div className="flex flex-col gap-3 rounded-xl border-2 border-[var(--sun)] bg-[#2B140E] p-4">
-              <span className="text-[14px] font-bold uppercase tracking-wider text-[var(--peach)]">
-                Right Branch: Bound Mandate
-              </span>
+            <dl className="mt-4 flex flex-col gap-4">
               <div>
-                <span className="block text-[14px] text-[var(--peach)]">
-                  Verified Recipient
-                </span>
-                <span className="text-[18px] font-bold text-[#FFFFFF]">
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--peach)]">
+                  Recipient
+                </dt>
+                <dd className="mt-0.5 text-[20px] font-bold text-[#FFFFFF]">
                   {recipientDisplayName}
-                </span>
+                </dd>
               </div>
               <div>
-                <span className="block text-[14px] text-[var(--peach)]">
-                  Bound Amount
-                </span>
-                <span className="num text-[32px] font-bold leading-tight text-[#FFFFFF]">
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--peach)]">
+                  Account number
+                </dt>
+                <dd className="num mt-0.5 text-[16px] font-bold text-[#FFFFFF]">
+                  {proposal?.payeeAccountNumber || "Saved contact account"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--peach)]">
+                  Amount
+                </dt>
+                <dd className="num mt-0.5 text-[36px] font-bold leading-tight text-[#FFFFFF]">
                   {formatUsdMinor(displayAmountMinor)}
-                </span>
+                </dd>
               </div>
-              <div className="flex items-center justify-between border-t border-[var(--peach)]/30 pt-2">
-                <span className="text-[14px] text-[var(--peach)]">
-                  Expiry Countdown
-                </span>
-                <span className="num rounded bg-[var(--sun)] px-2.5 py-0.5 text-[14px] font-bold text-[var(--text)]">
-                  {mandate ? `${secondsRemaining}s` : "120s"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[14px] text-[var(--peach)]">
-                  mandateHash
-                </span>
-                <span
-                  data-testid="mandate-hash-display"
-                  className="num text-[14px] font-bold text-[#FFFFFF]"
-                >
-                  {mandate
-                    ? truncateHash(mandate.mandateHash)
-                    : "awaiting_mandate"}
-                </span>
-              </div>
-            </div>
+            </dl>
           </div>
+
+          <div className="flex flex-col gap-3 text-[15px] text-[var(--peach)]">
+            <p className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-[var(--sun)]" aria-hidden="true" />
+              <span>Matches what you said</span>
+            </p>
+            <p className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-[var(--sun)]" aria-hidden="true" />
+              <span>Saved contact verified</span>
+            </p>
+            <p className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-[var(--sun)]" aria-hidden="true" />
+              <span>Within your $500.00 daily voice limit</span>
+            </p>
+            <p className="mt-2 border-t border-[var(--peach)]/30 pt-3 text-[14px]">
+              The transfer is a sandbox test payment. Nothing moves until you
+              finish the spoken readout and approve it.
+            </p>
+            </div>
         </section>
       </div>
     </div>

@@ -3,10 +3,7 @@
 import {
   CheckCircle2,
   Clock,
-  FileText,
   RefreshCw,
-  ShieldAlert,
-  ShieldCheck,
   X,
   XCircle,
 } from "lucide-react";
@@ -189,6 +186,28 @@ function getEventTitle(event: AuditEventRecord): string {
   }
 }
 
+function getRecipientName(event: AuditEventRecord): string {
+  const detail = event.detail;
+  return (
+    (typeof detail.payeeName === "string" && detail.payeeName) ||
+    (typeof detail.recipientName === "string" && detail.recipientName) ||
+    (typeof detail.resolvedName === "string" && detail.resolvedName) ||
+    (typeof detail.pastedName === "string" && detail.pastedName) ||
+    "KarenPay recipient"
+  );
+}
+
+function getAccountLabel(event: AuditEventRecord): string | null {
+  const detail = event.detail;
+  if (typeof detail.accountNumber === "string") {
+    return `Account: ${detail.accountNumber}`;
+  }
+  if (typeof detail.accountLast4 === "string") {
+    return `Account ending in ${detail.accountLast4}`;
+  }
+  return null;
+}
+
 function formatAuditTimestamp(iso: string): string {
   try {
     const date = new Date(iso);
@@ -213,7 +232,6 @@ export default function ActivityPage(): React.JSX.Element {
   const dialogTitleId = useId();
   const { announcePolite } = useAnnounce();
 
-  const [chainValid, setChainValid] = useState<boolean>(true);
   const [events, setEvents] = useState<AuditEventRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -236,16 +254,10 @@ export default function ActivityPage(): React.JSX.Element {
         }
         if (res.ok) {
           const data = (await res.json()) as AuditChainResponse;
-          const isValid = Boolean(data.chainValid ?? data.valid ?? true);
-          setChainValid(isValid);
           const ordered = [...(data.events ?? [])].reverse();
           setEvents(ordered);
           if (announceRefresh) {
-            announcePolite(
-              isValid
-                ? `Activity refreshed. Audit chain intact with ${ordered.length} events.`
-                : "Activity refreshed. Audit chain problem found.",
-            );
+            announcePolite(`Activity refreshed. ${ordered.length} transfer events loaded.`);
           }
         } else {
           setLoadError("Unable to load your audit log.");
@@ -301,7 +313,7 @@ export default function ActivityPage(): React.JSX.Element {
   };
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
+    <div className="flex flex-col gap-6 pb-24 pt-7">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1
@@ -311,59 +323,17 @@ export default function ActivityPage(): React.JSX.Element {
           >
             Activity
           </h1>
-          <p className="mt-1 text-[16px] text-[var(--text-muted)]">
-            Tamper-evident SHA-256 hash-chained audit log. Tap any event to
-            inspect its cryptographic proof.
-          </p>
         </div>
 
         <button
           type="button"
           onClick={() => void loadAuditLog(true)}
           aria-label="Refresh activity log"
-          className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2.5 text-[15px] font-bold text-[var(--text)] hover:bg-[var(--surface-tint)]"
+          className="inline-flex min-h-[48px] min-w-[110px] shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--surface-tint)] px-4 py-2.5 text-[16px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
         >
           <RefreshCw className="h-5 w-5 shrink-0" aria-hidden="true" />
           <span>Refresh</span>
         </button>
-      </div>
-
-      {/* Chain Integrity Banner */}
-      <div
-        role="status"
-        className={`flex items-center justify-between gap-3 rounded-2xl border-2 p-4 ${
-          chainValid
-            ? "border-[var(--border-strong)] bg-[var(--surface-tint)] text-[var(--text)]"
-            : "border-[var(--danger)] bg-[var(--surface)] text-[var(--danger)]"
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          {chainValid ? (
-            <ShieldCheck
-              className="h-6 w-6 shrink-0 text-[var(--text)]"
-              aria-hidden="true"
-            />
-          ) : (
-            <ShieldAlert
-              className="h-6 w-6 shrink-0 text-[var(--danger)]"
-              aria-hidden="true"
-            />
-          )}
-          <div>
-            <p className="text-[16px] font-bold">
-              {chainValid
-                ? "Audit chain: intact"
-                : "Audit chain: problem found"}
-            </p>
-            <p className="text-[14px] text-[var(--text-muted)]">
-              <span className="num font-bold">{events.length}</span> linked
-              events verified with SHA-256 base64url digest chaining
-            </p>
-          </div>
-        </div>
-        <span className="num rounded-full border-2 border-[var(--border-strong)] bg-[var(--surface)] px-3 py-1 text-[13px] font-bold text-[var(--text)]">
-          SHA-256 OK
-        </span>
       </div>
 
       {loadError ? (
@@ -379,11 +349,11 @@ export default function ActivityPage(): React.JSX.Element {
         </div>
       ) : events.length === 0 ? (
         <div className="rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-6 text-[16px] text-[var(--text-muted)]">
-          No audit events recorded yet. Every mandate creation, passkey
-          approval, and payout event will be hash-chained here automatically.
+          No transfers recorded yet. Your completed and pending transfers will
+          appear here.
         </div>
       ) : (
-        <ul className="flex flex-col gap-3" aria-label="Audit events">
+        <ul className="flex flex-col gap-4" aria-label="Audit events">
           {events.map((event) => {
             const chip = getApprovedStatusChip(event.eventType);
             const amountMinor =
@@ -397,13 +367,13 @@ export default function ActivityPage(): React.JSX.Element {
                 <button
                   type="button"
                   onClick={(e) => handleOpenInspector(event, e.currentTarget)}
-                  className="flex min-h-[84px] w-full flex-col gap-3 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-4 text-left transition-colors hover:bg-[var(--surface-tint)]"
+                  className="flex min-h-[154px] w-full flex-col gap-4 rounded-input border border-[var(--divider)] bg-[var(--surface)] p-5 text-left transition-colors hover:bg-[var(--surface-tint)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <span
                         aria-hidden="true"
-                        className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-[var(--border-strong)] ${
+                        className={`mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
                           chip.isRejected
                             ? "bg-[var(--coral)] text-[var(--text)]"
                             : "bg-[var(--sun)] text-[var(--text)]"
@@ -421,34 +391,35 @@ export default function ActivityPage(): React.JSX.Element {
                       </span>
                       <div>
                         <span className="block text-[17px] font-bold text-[var(--text)]">
-                          {getEventTitle(event)}
+                          {getRecipientName(event)}
                         </span>
-                        <span className="num mt-0.5 block text-[14px] text-[var(--text-muted)]">
+                        {getAccountLabel(event) ? (
+                          <span className="num mt-0.5 block text-[14px] font-bold text-[var(--text-muted)]">
+                            {getAccountLabel(event)}
+                          </span>
+                        ) : null}
+                        <span className="mt-0.5 block text-[14px] font-bold text-[var(--text-muted)]">
                           {formatAuditTimestamp(event.createdAt)}
                         </span>
                       </div>
                     </div>
 
                     {amountMinor !== null ? (
-                      <span className="num shrink-0 text-[18px] font-bold text-[var(--text)]">
+                      <span className="num shrink-0 text-[20px] font-bold text-[var(--text)]">
                         {formatUsdMinor(amountMinor)}
                       </span>
                     ) : null}
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--divider)] pt-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`inline-flex items-center rounded-full border px-3 py-0.5 text-[13px] font-bold ${
                         chip.isRejected
-                          ? "border-[var(--danger)] bg-[var(--bg)] text-[var(--danger)]"
-                          : "border-[var(--border-strong)] bg-[var(--surface-tint)] text-[var(--text)]"
+                          ? "border-[var(--danger)] bg-[var(--surface)] text-[var(--danger)]"
+                          : "border-transparent bg-[var(--surface-tint)] text-[var(--text)]"
                       }`}
                     >
                       {chip.label}
-                    </span>
-                    <span className="num inline-flex items-center gap-1.5 text-[13px] font-bold text-[var(--text-muted)]">
-                      <FileText className="h-4 w-4" aria-hidden="true" />
-                      <span>hash: {event.hash.slice(0, 12)}...</span>
                     </span>
                   </div>
                 </button>
@@ -477,7 +448,7 @@ export default function ActivityPage(): React.JSX.Element {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <span className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  Cryptographic Chain Inspector
+                  Transfer receipt
                 </span>
                 <h2
                   id={dialogTitleId}
@@ -490,7 +461,7 @@ export default function ActivityPage(): React.JSX.Element {
                 ref={closeButtonRef}
                 type="button"
                 onClick={handleCloseInspector}
-                aria-label="Close cryptographic inspector"
+                aria-label="Close transfer receipt"
                 className="inline-flex min-h-[48px] min-w-[48px] shrink-0 items-center justify-center rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] text-[var(--text)] hover:bg-[var(--peach)]"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
@@ -499,122 +470,56 @@ export default function ActivityPage(): React.JSX.Element {
 
             <div className="flex items-center justify-between rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-4 py-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck
-                  className="h-5 w-5 shrink-0 text-[var(--text)]"
-                  aria-hidden="true"
-                />
                 <span className="text-[15px] font-bold text-[var(--text)]">
-                  Verification Status: Hash Chain Verified
+                  {getApprovedStatusChip(selectedEvent.eventType).label}
                 </span>
-              </div>
-              <span className="num text-[13px] font-bold text-[var(--text-muted)]">
-                {selectedEvent.eventType}
-              </span>
+            </div>
             </div>
 
             <dl className="flex flex-col gap-3 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4">
               <div>
                 <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  mandateId
+                  Transfer amount
                 </dt>
-                <dd
-                  data-testid="inspector-mandate-id"
-                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
-                >
-                  {selectedEvent.mandateId ?? "N/A (Pre-mandate check)"}
+                <dd className="num mt-0.5 text-[24px] font-bold text-[var(--text)]">
+                  {typeof selectedEvent.detail.amountMinor === "number"
+                    ? formatUsdMinor(selectedEvent.detail.amountMinor)
+                    : typeof selectedEvent.detail.totalMinor === "number"
+                      ? formatUsdMinor(selectedEvent.detail.totalMinor)
+                      : "Not provided"}
                 </dd>
               </div>
-
+              <div className="border-t border-[var(--divider)] pt-2.5">
+                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  Recipient
+                </dt>
+                <dd className="mt-0.5 text-[17px] font-bold text-[var(--text)]">
+                  {getEventTitle(selectedEvent)}
+                </dd>
+              </div>
               {selectedEvent.detail &&
-              typeof selectedEvent.detail.batchId === "string" ? (
+              (typeof selectedEvent.detail.accountLast4 === "string" ||
+                typeof selectedEvent.detail.bankName === "string") ? (
                 <div className="border-t border-[var(--divider)] pt-2.5">
                   <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    batchId
-                  </dt>
-                  <dd
-                    data-testid="inspector-batch-id"
-                    className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
-                  >
-                    {selectedEvent.detail.batchId}
-                  </dd>
-                </div>
-              ) : null}
-
-              {selectedEvent.detail &&
-              typeof selectedEvent.detail.planHash === "string" ? (
-                <div className="border-t border-[var(--divider)] pt-2.5">
-                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    planHash
-                  </dt>
-                  <dd className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]">
-                    {selectedEvent.detail.planHash}
-                  </dd>
-                </div>
-              ) : null}
-
-              {selectedEvent.detail &&
-              typeof selectedEvent.detail.accountLast4 === "string" ? (
-                <div className="border-t border-[var(--divider)] pt-2.5">
-                  <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    accountLast4 (Simulated directory)
+                    Account
                   </dt>
                   <dd className="num mt-0.5 text-[15px] font-bold text-[var(--text)]">
-                    Ending in {selectedEvent.detail.accountLast4}
+                    {typeof selectedEvent.detail.accountLast4 === "string"
+                      ? `Ending in ${selectedEvent.detail.accountLast4}`
+                      : "Saved contact"}
                     {typeof selectedEvent.detail.bankName === "string"
                       ? ` · ${selectedEvent.detail.bankName}`
                       : ""}
                   </dd>
                 </div>
               ) : null}
-
               <div className="border-t border-[var(--divider)] pt-2.5">
                 <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  mandateHash
+                  Date &amp; time
                 </dt>
-                <dd
-                  data-testid="inspector-mandate-hash"
-                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
-                >
-                  {selectedEvent.detail &&
-                  typeof selectedEvent.detail.mandateHash === "string"
-                    ? selectedEvent.detail.mandateHash
-                    : selectedEvent.hash}
-                </dd>
-              </div>
-
-              <div className="border-t border-[var(--divider)] pt-2.5">
-                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  prevHash
-                </dt>
-                <dd
-                  data-testid="inspector-prev-hash"
-                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
-                >
-                  {selectedEvent.prevHash ?? "GENESIS_ROOT (null)"}
-                </dd>
-              </div>
-
-              <div className="border-t border-[var(--divider)] pt-2.5">
-                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  requestHash
-                </dt>
-                <dd
-                  data-testid="inspector-request-hash"
-                  className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]"
-                >
-                  {selectedEvent.detail &&
-                  typeof selectedEvent.detail.requestHash === "string"
-                    ? selectedEvent.detail.requestHash
-                    : "N/A"}
-                </dd>
-              </div>
-
-              <div className="border-t border-[var(--divider)] pt-2.5">
-                <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  eventHash (Current SHA-256 Digest)
-                </dt>
-                <dd className="num mt-0.5 break-all text-[15px] font-bold text-[var(--text)]">
-                  {selectedEvent.hash}
+                <dd className="num mt-0.5 text-[15px] font-bold text-[var(--text)]">
+                  {formatAuditTimestamp(selectedEvent.createdAt)}
                 </dd>
               </div>
 
@@ -622,7 +527,7 @@ export default function ActivityPage(): React.JSX.Element {
               typeof selectedEvent.detail.spokenText === "string" ? (
                 <div className="border-t border-[var(--divider)] pt-2.5">
                   <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    spokenText
+                    Spoken readout
                   </dt>
                   <dd
                     data-testid="inspector-spoken-text"
@@ -639,7 +544,7 @@ export default function ActivityPage(): React.JSX.Element {
               onClick={handleCloseInspector}
               className="inline-flex min-h-[48px] w-full items-center justify-center rounded-xl border-2 border-[var(--border-strong)] bg-[var(--primary)] px-5 py-3 text-[16px] font-bold text-[#FFFFFF] hover:bg-[var(--primary-hover)]"
             >
-              Close Inspector
+              Close
             </button>
           </div>
         </div>

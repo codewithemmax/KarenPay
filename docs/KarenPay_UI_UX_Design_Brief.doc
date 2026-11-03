@@ -1,0 +1,140 @@
+﻿
+        <html xmlns:o="urn:schemas-microsoft-com:office:office"
+              xmlns:w="urn:schemas-microsoft-com:office:word"
+              xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <title>KarenPay UI/UX Design Brief</title>
+          <style>
+            body { font-family: Calibri, Arial, sans-serif; color: #1F0D09; line-height: 1.5; font-size: 11pt; }
+            h1 { font-size: 20pt; color: #1F0D09; margin-bottom: 8pt; }
+            h2 { font-size: 15pt; color: #5C2418; border-bottom: 1.5pt solid #FDD9B5; padding-bottom: 4pt; margin-top: 18pt; }
+            h3 { font-size: 12.5pt; color: #5C2418; margin-top: 12pt; }
+            table { border-collapse: collapse; width: 100%; margin: 10pt 0; }
+            th, td { border: 1pt solid #C8B6A6; padding: 6pt 8pt; text-align: left; font-size: 10pt; }
+            th { background-color: #FDD9B5; color: #1F0D09; font-weight: bold; }
+            .callout { background-color: #FFF2E7; border-left: 4pt solid #B82D14; padding: 10pt; margin: 10pt 0; }
+          </style>
+        </head>
+        <body>
+    <h1>KarenPay — UI/UX Product &amp; Figma Design Brief</h1>
+    <p><strong>Document Purpose:</strong> Screen-by-screen Figma specification for simplifying KarenPay by removing all cryptographic hashes and technical jargon from the user interface while keeping the working Login, Register, Home, and Contacts screens untouched.</p>
+    <p><strong>Target Platforms:</strong> Mobile Web (390 × 844 px) &amp; Desktop Web (1280 × 800 px).</p>
+
+    <h2>1. Product Vision &amp; What We Are Changing</h2>
+    <p>KarenPay is a voice-first, passkey-confirmed payment app designed so blind users, low-vision users, and everyday users can send money safely by voice.</p>
+    <div class="callout">
+      <strong>Core Redesign Rule:</strong> Do NOT touch Login (<code>/</code>), Register (<code>/register</code>), Home (<code>/home</code>), or Contacts (<code>/contacts</code>). Only simplify the screens that currently show hashing or complicated developer diagrams (<code>/pay</code>, <code>/activity</code>, and <code>/me</code>).
+    </div>
+    <ul>
+      <li><strong>Remove All Signs of Hashing:</strong> Never show <code>SHA-256</code>, <code>mandateHash</code>, <code>prevHash</code>, <code>requestHash</code>, <code>120s TTL</code>, <code>@karenpay/core</code>, <code>checkIntent</code>, or <code>checkLimits</code> anywhere on screen.</li>
+      <li><strong>Show Clear Banking Details Instead:</strong> Every transfer card and activity item must clearly show:
+        <ol>
+          <li><strong>The transfer amount</strong> (e.g., <strong>$50.00</strong>)</li>
+          <li><strong>The recipient's name</strong> (e.g., <strong>Ade Bello</strong>)</li>
+          <li><strong>The recipient's account number</strong> (e.g., <strong>Account: 0123456789</strong>)</li>
+          <li><strong>The transfer status</strong> (e.g., <strong>Waiting for your approval</strong>, <strong>Test payment sent</strong>, or <strong>Rejected</strong>)</li>
+        </ol>
+      </li>
+    </ul>
+
+    <h2>2. Warm Sunset Color Palette (Unchanged)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Token Name</th>
+          <th>Hex Value</th>
+          <th>Where to Use</th>
+          <th>Text Color on Top</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>bg-canvas</td><td>#FFF2E7</td><td>Main app background across all screens</td><td>#1F0D09 or #5C2418</td></tr>
+        <tr><td>surface</td><td>#FFFFFF</td><td>Cards, activity rows, bottom sheets, tab bar</td><td>#1F0D09 or #5C2418</td></tr>
+        <tr><td>surface-tint</td><td>#FDD9B5</td><td>Secondary pill buttons, status chips, callouts</td><td>#1F0D09</td></tr>
+        <tr><td>balance-card</td><td>#1F0D09</td><td>Home Balance Card &amp; Transfer Summary Card</td><td>#FFFFFF, #F0C38E, #FFCC6B</td></tr>
+        <tr><td>primary</td><td>#B82D14</td><td>Primary 64px CTA buttons</td><td>#FFFFFF</td></tr>
+        <tr><td>sun</td><td>#FFCC6B</td><td>Progress bar fill, avatars, verified pills</td><td>#1F0D09</td></tr>
+        <tr><td>peach</td><td>#F0C38E</td><td>Avatars, captions on dark #1F0D09 cards</td><td>#1F0D09</td></tr>
+        <tr><td>coral</td><td>#F1AA9B</td><td>Avatars, rejected icon circle</td><td>#1F0D09</td></tr>
+        <tr><td>warning-bg</td><td>#FEF3C7</td><td>Notice box &amp; Demo Security switch box</td><td>#78350F</td></tr>
+        <tr><td>danger</td><td>#9F1239</td><td>Rejected status border and error message text</td><td>#FFFFFF or on #FFF2E7</td></tr>
+      </tbody>
+    </table>
+
+    <h2>3. Screens 1 to 4 — Locked (Do Not Modify)</h2>
+    <ul>
+      <li><strong>Screen 1 (<code>/</code> Welcome &amp; Login):</strong> Keep untouched.</li>
+      <li><strong>Screen 2 (<code>/register</code> Create Account &amp; Passkey Ready):</strong> Keep untouched.</li>
+      <li><strong>Screen 3 (<code>/home</code> Home Wallet):</strong> Keep untouched (ensure Recent Activity preview rows show only Name, Time, Amount, and Status—no hashes).</li>
+      <li><strong>Screen 4 (<code>/contacts</code> Allowed Contacts):</strong> Keep untouched.</li>
+    </ul>
+
+    <h2>4. Screen 5: Voice Payment (<code>/pay</code>) — Remove Node Tree &amp; Hashes</h2>
+    <h3>What to Change on Mobile &amp; Desktop (Artboards 5C, 5D, 5E):</h3>
+    <ul>
+      <li><strong>Top Stepper:</strong> <code>1. Understand</code> → <code>2. Review details</code> → <code>3. Read aloud</code> → <code>4. Confirm</code>.</li>
+      <li><strong>Transfer Summary Card (#1F0D09 dark card):</strong>
+        <ul>
+          <li>Recipient Name: <strong>Ade Bello</strong></li>
+          <li>Account Number: <strong>Account: 0123456789 (Sandbox Bank)</strong></li>
+          <li>Amount: <strong>$50.00</strong> (40px Bold Tabular)</li>
+          <li>Status Pill: <strong>Waiting for your approval</strong></li>
+        </ul>
+      </li>
+      <li><strong>Spoken Readout Box (#FFFFFF card):</strong>
+        <ul>
+          <li>Header: <em>"Reading payment details aloud"</em></li>
+          <li>Quote: <em>"You asked to send fifty dollars to Ade Bello. That is five, zero dollars. This is a test payment. To approve, use your fingerprint or face now."</em></li>
+          <li>Locked Button: <strong>Approve with Fingerprint or Face</strong> (Disabled until voice readout finishes).</li>
+        </ul>
+      </li>
+      <li><strong>Desktop Right Column (Replaces the Branching Hash Tree):</strong>
+        <ul>
+          <li>Remove the branching tree, <code>requestHash</code>, <code>mandateHash</code>, <code>120s TTL</code>, and <code>@karenpay/core policy guards</code>.</li>
+          <li>Replace with a clean <strong>Transfer Summary Card</strong> showing:
+            <ol>
+              <li>Badge: <strong>✓ Verified recipient</strong></li>
+              <li>Recipient: <strong>Ade Bello</strong></li>
+              <li>Account Number: <strong>Account: 0123456789 · Sandbox Bank</strong></li>
+              <li>Amount: <strong>$50.00</strong></li>
+              <li>Three simple checkmarks: <em>"✓ Matches what you said"</em>, <em>"✓ Saved contact verified"</em>, and <em>"✓ Within your $500.00 daily voice limit"</em>.</li>
+            </ol>
+          </li>
+        </ul>
+      </li>
+    </ul>
+
+    <h2>5. Screen 6: Activity Page (<code>/activity</code>) — Clean Transfer History</h2>
+    <h3>Artboard 6A: Activity List (No Hashes or SHA Banners)</h3>
+    <ul>
+      <li>Remove the <em>"Audit chain: intact / SHA-256 OK"</em> banner and remove all <code>hash: ...</code> strings from every row.</li>
+      <li>Each transfer card shows <strong>4 clear pieces of information</strong>:
+        <ul>
+          <li><strong>Row 1 (Awaiting Approval):</strong> <strong>Ade Bello</strong> · <code>Account: 0123456789</code> · Today, 2:14 PM · <strong>$50.00</strong> · Status: <strong>Waiting for your approval</strong></li>
+          <li><strong>Row 2 (Completed Transfer):</strong> <strong>Chidi Okonkwo</strong> · <code>Account: 0144802319</code> · Today, 11:45 AM · <strong>-$25.00</strong> · Status: <strong>Test payment sent</strong></li>
+          <li><strong>Row 3 (Rejected Transfer):</strong> <strong>Fatima Yusuf</strong> · <code>Account: 0130894412</code> · Yesterday, 4:05 PM · <strong>$150.00</strong> · Status: <strong>Rejected</strong></li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>Artboard 6B: Transfer Details Bottom Sheet (Replaces Chain Inspector)</h3>
+    <p>When a user taps any activity row, slide up a clean <strong>Transfer Details Receipt</strong> showing:</p>
+    <ul>
+      <li><strong>Transfer Amount:</strong> $50.00</li>
+      <li><strong>Recipient Name:</strong> Ade Bello</li>
+      <li><strong>Account Number:</strong> 0123456789 (Sandbox Bank)</li>
+      <li><strong>Status:</strong> Test payment sent (or Waiting for your approval / Rejected)</li>
+      <li><strong>Date &amp; Time:</strong> Today, 2:10 PM</li>
+      <li><strong>Spoken Readout:</strong> <em>"You asked to send fifty dollars to Ade Bello. That is five, zero dollars."</em></li>
+      <li><strong>Button:</strong> Close</li>
+    </ul>
+
+    <h2>6. Screen 7: Me &amp; Passkey Security (<code>/me</code>) — Plain-English Profile</h2>
+    <ul>
+      <li><strong>Account Card:</strong> Shows <strong>Ade Bello</strong> and <strong>Account: 0123456789</strong> (remove raw UUID <code>11111111...1111</code>).</li>
+      <li><strong>Your Passkey Card:</strong> Shows <strong>Active on this device</strong>, <strong>Approval method: Fingerprint, face, or device PIN</strong>, and <strong>Added on: October 22, 2026</strong> (remove <code>cred_webauthn_...</code> and <code>mandateHash</code> text).</li>
+      <li><strong>How KarenPay Protects You:</strong> Two simple sentences explaining read-aloud protection and passkey protection without technical jargon.</li>
+    </ul>
+  </body>
+        </html>

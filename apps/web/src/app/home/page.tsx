@@ -19,6 +19,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { BottomTabBar } from "../../components/BottomTabBar";
 import { Button } from "../../components/Button";
 import { useLiveRegions } from "../../components/LiveRegions";
+import { VoiceModeToggle } from "../../components/VoiceModeToggle";
 import {
   VOICE_POLICY_LIMIT_MAX_MINOR,
   formatMoneyMinor,
@@ -443,6 +444,24 @@ export default function HomePage() {
               </span>
               <span className="text-sm font-medium text-text">Security</span>
             </Link>
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="voice-mode-heading"
+          className="rounded-card border border-divider bg-surface p-5 shadow-card"
+        >
+          <div className="flex flex-col gap-3">
+            <div>
+              <h2 id="voice-mode-heading" className="text-lg font-bold text-text">
+                Prefer a simpler experience?
+              </h2>
+              <p className="mt-1 text-sm text-text-muted">
+                Voice-only mode keeps payment actions focused on speaking and
+                listening. You can switch back anytime.
+              </p>
+            </div>
+            <VoiceModeToggle />
           </div>
         </section>
 

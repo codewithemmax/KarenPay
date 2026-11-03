@@ -2,9 +2,7 @@
 
 import {
   Fingerprint,
-  KeyRound,
   LogOut,
-  ShieldCheck,
   Volume2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -12,6 +10,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { BottomTabBar } from "../../components/BottomTabBar";
 import { useAnnounce } from "../../components/LiveRegions";
 import { getInitials } from "../../lib/demoData";
+import { VoiceModeToggle } from "../../components/VoiceModeToggle";
 
 const HOLDER_NAME_STORAGE_KEY = "kp_holder_name";
 const PASSKEY_ID_STORAGE_KEY = "kp_passkey_id_hint";
@@ -95,11 +94,6 @@ export default function MePage(): React.JSX.Element {
   };
 
   const activeCredential = profile?.credentials?.[0];
-  const formattedCredId = activeCredential?.credentialId
-    ? activeCredential.credentialId.length > 20
-      ? `${activeCredential.credentialId.slice(0, 10)}...${activeCredential.credentialId.slice(-6)}`
-      : activeCredential.credentialId
-    : "Enrolled passkey";
   const enrolledDate = activeCredential?.createdAt
     ? new Date(activeCredential.createdAt).toLocaleDateString("en-US", {
         year: "numeric",
@@ -109,7 +103,7 @@ export default function MePage(): React.JSX.Element {
     : "Active session";
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
+    <div className="flex flex-col gap-6 pb-24 pt-7">
       <div>
         <h1
           ref={headingRef}
@@ -119,14 +113,14 @@ export default function MePage(): React.JSX.Element {
           Me &amp; Passkey Security
         </h1>
         <p className="mt-1 text-[16px] text-[var(--text-muted)]">
-          Manage your sandbox account, active WebAuthn passkey, and session.
+          Manage your account and approval method.
         </p>
       </div>
 
       {/* Account Holder Profile Card */}
       <section
         aria-label="Account profile"
-        className="flex items-center justify-between gap-4 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-5"
+        className="flex items-center gap-[18px] rounded-card border border-[var(--divider)] bg-[var(--surface)] p-6"
       >
         <div className="flex items-center gap-4">
           <div
@@ -135,81 +129,70 @@ export default function MePage(): React.JSX.Element {
           >
             {getInitials(holderName)}
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-[20px] font-bold text-[var(--text)]">
               {holderName || "Signed-in Account"}
             </h2>
             <p className="num text-[14px] text-[var(--text-muted)]">
-              Account ID:{" "}
+              Account:{" "}
               {profile?.accountId
                 ? `${profile.accountId.slice(0, 8)}...${profile.accountId.slice(-4)}`
                 : "Authenticated"}
             </p>
+            <span className="mt-1 inline-flex min-h-[26px] items-center rounded-full bg-[var(--surface-tint)] px-3 py-1 text-[13px] font-bold text-[var(--text)]">
+              Sandbox account
+            </span>
           </div>
         </div>
-
-        <span className="inline-flex min-h-[36px] shrink-0 items-center rounded-full border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-3.5 py-1 text-[14px] font-bold text-[var(--text)]">
-          Sandbox account
-        </span>
       </section>
 
-      {/* Active WebAuthn Passkey Card */}
+      {/* Active passkey card */}
       <section
         aria-labelledby="passkey-card-heading"
-        className="flex flex-col gap-4 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-5"
+        className="flex flex-col gap-[18px] rounded-card border border-[var(--divider)] bg-[var(--surface)] p-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <KeyRound
-              className="h-6 w-6 shrink-0 text-[var(--text)]"
-              aria-hidden="true"
-            />
             <h2
               id="passkey-card-heading"
               className="text-[20px] font-bold text-[var(--text)]"
             >
-              Active WebAuthn Passkey
+              Your passkey
             </h2>
           </div>
 
-          <span className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border-2 border-[var(--border-strong)] bg-[var(--sun)] px-3 py-1 text-[13px] font-bold text-[var(--text)]">
-            <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>Hardware / Platform Passkey Verified</span>
+          <span className="inline-flex min-h-[26px] items-center gap-1.5 rounded-full bg-[var(--sun)] px-3 py-1 text-[13px] font-bold text-[var(--text)]">
+            <span>Active on this device</span>
           </span>
         </div>
 
-        <dl className="grid grid-cols-1 gap-3 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4 sm:grid-cols-2">
+        <dl className="flex flex-col gap-4 rounded-input bg-[var(--bg)] p-5">
           <div>
             <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Credential ID
+              Approval method
             </dt>
-            <dd className="num mt-0.5 text-[16px] font-bold text-[var(--text)]">
-              {formattedCredId}
+            <dd className="mt-0.5 text-[17px] font-bold text-[var(--text)]">
+              Fingerprint, face, or device PIN
             </dd>
           </div>
           <div>
             <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Enrolled Date &amp; RP
+              Added on
             </dt>
-            <dd className="num mt-0.5 text-[16px] font-bold text-[var(--text)]">
+            <dd className="num mt-0.5 text-[17px] font-bold text-[var(--text)]">
               {enrolledDate}
-              {profile?.rpID ? ` · RP ${profile.rpID}` : ""}
             </dd>
           </div>
         </dl>
 
         <p className="text-[15px] leading-relaxed text-[var(--text-muted)]">
-          Your passkey signs the exact <span className="num">mandateHash</span>{" "}
-          using your device fingerprint or face. The private key never leaves
-          your device.
+          Your passkey keeps approval on your device. KarenPay never approves a
+          transfer for you.
         </p>
       </section>
 
       {/* How KarenPay Works Summary */}
-      <section
-        aria-labelledby="how-it-works-heading"
-        className="flex flex-col gap-3 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface)] p-5"
-      >
+      <section aria-labelledby="how-it-works-heading" className="flex flex-col gap-3">
         <h2
           id="how-it-works-heading"
           className="text-[20px] font-bold text-[var(--text)]"
@@ -217,37 +200,53 @@ export default function MePage(): React.JSX.Element {
           How KarenPay Protects You
         </h2>
 
-        <div className="flex items-start gap-3 rounded-xl border border-[var(--divider)] bg-[var(--bg)] p-3.5">
+        <div className="flex items-start gap-4 rounded-input border border-[var(--divider)] bg-[var(--surface)] p-5">
           <Volume2
-            className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text)]"
+            className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-[var(--surface-tint)] p-2.5 text-[var(--text)]"
             aria-hidden="true"
           />
           <div>
             <h3 className="text-[16px] font-bold text-[var(--text)]">
-              Mandatory Spoken Readout Lock
+              Hear it before you approve
             </h3>
             <p className="text-[14px] text-[var(--text-muted)]">
-              Approval stays physically locked until the server readout finishes
-              speaking the recipient and amount in both words and digits.
+              Approval stays locked until you hear the recipient and amount
+              spoken aloud in both words and digits.
             </p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-xl border border-[var(--divider)] bg-[var(--bg)] p-3.5">
+        <div className="flex items-start gap-4 rounded-input border border-[var(--divider)] bg-[var(--surface)] p-5">
           <Fingerprint
-            className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text)]"
+            className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-[var(--surface-tint)] p-2.5 text-[var(--text)]"
             aria-hidden="true"
           />
           <div>
             <h3 className="text-[16px] font-bold text-[var(--text)]">
-              Challenge-Bound Biometric Consent
+              Approve it yourself
             </h3>
             <p className="text-[14px] text-[var(--text-muted)]">
-              Every payment approval requires a WebAuthn signature where{" "}
-              <span className="num font-bold">challenge === mandateHash</span>.
+              Each payment still needs your fingerprint, face, or device PIN.
+              Your approval is never shared with anyone else.
             </p>
           </div>
         </div>
+      </section>
+
+      <section
+        aria-labelledby="voice-mode-heading"
+        className="flex flex-col gap-3 rounded-card border border-divider bg-surface p-5"
+      >
+        <div>
+          <h2 id="voice-mode-heading" className="text-[20px] font-bold text-text">
+            Voice-only mode
+          </h2>
+          <p className="mt-1 text-[15px] text-text-muted">
+            Use a focused speak-and-listen payment screen. Your security checks
+            stay the same.
+          </p>
+        </div>
+        <VoiceModeToggle />
       </section>
 
       {/* Sign Out Button (>= 48px) */}
@@ -255,7 +254,7 @@ export default function MePage(): React.JSX.Element {
         type="button"
         onClick={() => void handleSignOut()}
         disabled={isSigningOut}
-        className="inline-flex min-h-[56px] w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] px-6 py-3.5 text-[17px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
+        className="inline-flex min-h-[56px] w-full items-center justify-center gap-2.5 rounded-full bg-[var(--surface-tint)] px-6 py-3.5 text-[17px] font-bold text-[var(--text)] hover:bg-[var(--peach)]"
       >
         <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
         <span>{isSigningOut ? "Signing out..." : "Sign out"}</span>
