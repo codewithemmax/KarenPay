@@ -62,6 +62,9 @@ function splitComposedPayeeName(payeeName: string): {
 export interface BulkWidgetRegistryCallbacks {
   activeBatchId: string | null;
   activeItemId: string | null;
+  activeItemPosition: number | null;
+  batchItemCount: number;
+  batchTotalMinor: number;
   isBusy: boolean;
   onResolveName: (
     itemId: string,
@@ -377,6 +380,9 @@ function TransferApprovalWidgetCard({
   widget,
   activeBatchId,
   activeItemId,
+  activeItemPosition,
+  batchItemCount,
+  batchTotalMinor,
   isBusy,
   onCancelItem,
   onTransferApproved,
@@ -385,6 +391,9 @@ function TransferApprovalWidgetCard({
   widget: TransferApprovalWidget;
   activeBatchId: string | null;
   activeItemId: string | null;
+  activeItemPosition: number | null;
+  batchItemCount: number;
+  batchTotalMinor: number;
   isBusy: boolean;
   onCancelItem: BulkWidgetRegistryCallbacks["onCancelItem"];
   onTransferApproved: BulkWidgetRegistryCallbacks["onTransferApproved"];
@@ -818,11 +827,41 @@ function TransferApprovalWidgetCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-[14px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-            Single transfer approval
+            Bulk transfer approval
           </span>
+          {activeItemPosition !== null && batchItemCount > 0 ? (
+            <span className="rounded-full border border-[var(--border-strong)] bg-[var(--surface-tint)] px-2.5 py-0.5 text-[12px] font-bold text-[var(--text)]">
+              Recipient {activeItemPosition + 1} of {batchItemCount}
+            </span>
+          ) : null}
           <span className="num rounded-full border border-[var(--border-strong)] bg-[var(--bg)] px-2.5 py-0.5 text-[12px] font-bold text-[var(--text)]">
             {secondsRemaining}s TTL
           </span>
+        </div>
+
+        <div className="mt-3 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface-tint)] p-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Batch transfer
+              </p>
+              <p className="mt-0.5 text-[15px] font-bold text-[var(--text)]">
+                This recipient is part of the full batch
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="block text-[12px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Batch total
+              </span>
+              <span className="num text-[20px] font-bold text-[var(--text)]">
+                {formatUsdMinor(batchTotalMinor)}
+              </span>
+            </div>
+          </div>
+          <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+            Passkey approvals move through recipients one at a time. Use the
+            batch PIN panel above to send all remaining recipients with one PIN.
+          </p>
         </div>
 
         <span
@@ -1184,6 +1223,9 @@ export function BulkWidgetRenderer({
           widget={widget}
           activeBatchId={callbacks.activeBatchId}
           activeItemId={callbacks.activeItemId}
+          activeItemPosition={callbacks.activeItemPosition}
+          batchItemCount={callbacks.batchItemCount}
+          batchTotalMinor={callbacks.batchTotalMinor}
           isBusy={callbacks.isBusy}
           onCancelItem={callbacks.onCancelItem}
           onTransferApproved={callbacks.onTransferApproved}

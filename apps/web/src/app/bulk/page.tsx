@@ -82,6 +82,10 @@ export default function BulkPayPage(): React.JSX.Element {
   const [batchId, setBatchId] = useState<string | null>(null);
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [activeItemPosition, setActiveItemPosition] = useState<number | null>(
+    null,
+  );
+  const [batchItemCount, setBatchItemCount] = useState<number>(0);
   const [runningTotalMinor, setRunningTotalMinor] = useState<number>(0);
   const [plannedTotalMinor, setPlannedTotalMinor] = useState<number>(0);
   const [hasUnresolvedNameChecks, setHasUnresolvedNameChecks] =
@@ -268,6 +272,15 @@ export default function BulkPayPage(): React.JSX.Element {
       }
 
       const widgets = Array.isArray(data.widgets) ? data.widgets : [];
+      const planWidget = widgets.find(
+        (widget): widget is { type: "plan"; items?: unknown[] } =>
+          typeof widget === "object" &&
+          widget !== null &&
+          (widget as { type?: unknown }).type === "plan",
+      );
+      if (planWidget?.items) {
+        setBatchItemCount(planWidget.items.length);
+      }
       console.log(
         `[Bulk Page] Parse succeeded: batchId=${data.batchId}, status=${data.status}, widgets=${widgets.length}`,
       );
@@ -398,6 +411,15 @@ export default function BulkPayPage(): React.JSX.Element {
       }
 
       const widgets = Array.isArray(data.widgets) ? data.widgets : [];
+      const planWidget = widgets.find(
+        (widget): widget is { type: "plan"; items?: unknown[] } =>
+          typeof widget === "object" &&
+          widget !== null &&
+          (widget as { type?: unknown }).type === "plan",
+      );
+      if (planWidget?.items) {
+        setBatchItemCount(planWidget.items.length);
+      }
       console.log(
         `[Bulk Page] Plan generated successfully: status=${data.status}, totalMinor=${data.totalMinor}, widgets=${widgets.length}`,
       );
@@ -474,6 +496,7 @@ export default function BulkPayPage(): React.JSX.Element {
 
         setBatchStatus(data.status ?? "IN_PROGRESS");
         setActiveItemId(data.activeItem?.itemId ?? null);
+        setActiveItemPosition(data.activeItem?.position ?? null);
         if (typeof data.runningTotalMinor === "number") {
           setRunningTotalMinor(data.runningTotalMinor);
         }
@@ -631,6 +654,7 @@ export default function BulkPayPage(): React.JSX.Element {
         ) {
           setBatchStatus(data.batchStatus);
           setActiveItemId(null);
+          setActiveItemPosition(null);
         } else if (batchStatus === "IN_PROGRESS" || batchStatus === "CONFIRMED") {
           await activateNextItem(targetBatchId);
         }
@@ -702,6 +726,7 @@ export default function BulkPayPage(): React.JSX.Element {
       );
       setBatchStatus(data.status ?? "CANCELLED");
       setActiveItemId(null);
+      setActiveItemPosition(null);
       if (typeof data.paidMinor === "number") {
         setRunningTotalMinor(data.paidMinor);
       }
@@ -768,6 +793,9 @@ export default function BulkPayPage(): React.JSX.Element {
     setIsBulkPinSending(true);
     setIsBusy(true);
     setErrorBanner(null);
+    setBulkPin("");
+    setBulkPinAcknowledged(false);
+    setIsBulkPinSending(false);
     try {
       for (let count = 0; count < 5; count += 1) {
         const nextResponse = await fetch(`/api/v1/bulk/${batchId}/next`, {
@@ -833,6 +861,7 @@ export default function BulkPayPage(): React.JSX.Element {
         });
       }
       setActiveItemId(null);
+      setActiveItemPosition(null);
       setBatchStatus("COMPLETED");
       announcePolite("All approved bulk payments were sent.");
     } catch (error) {
@@ -857,6 +886,8 @@ export default function BulkPayPage(): React.JSX.Element {
     setBatchId(null);
     setBatchStatus(null);
     setActiveItemId(null);
+    setActiveItemPosition(null);
+    setBatchItemCount(0);
     setRunningTotalMinor(0);
     setPlannedTotalMinor(0);
     setHasUnresolvedNameChecks(false);
@@ -880,6 +911,9 @@ export default function BulkPayPage(): React.JSX.Element {
   const registryCallbacks: BulkWidgetRegistryCallbacks = {
     activeBatchId: batchId,
     activeItemId,
+    activeItemPosition,
+    batchItemCount,
+    batchTotalMinor: plannedTotalMinor,
     isBusy,
     onResolveName: handleResolveName,
     onConfirmPlan: handleConfirmPlan,
