@@ -7,6 +7,7 @@ import { createAuthRouter, getAuthenticatedAccountId, loadAuthConfig, type AuthC
 import { buildMandateApprovalOptions, createAccountMandate, createMandateRouter, loadMandateConfig } from "./mandates.js";
 import { createIntentRouter, loadIntentConfig } from "./intents.js";
 import { createApproveBulkHook, createBulkRouter, loadBulkConfig } from "./bulk/index.js";
+import { createPayPalWebhookRouter } from "./paypal-webhook.js";
 
 export { createApproveRouter, loadApproveConfig, type ApproveBulkHook, type ApproveConfig, type ApproveReceiverResolutionResult } from "./approve.js";
 export { appendAuditEvent, createAuditRouter } from "./audit.js";
@@ -14,6 +15,7 @@ export { createAuthRouter, loadAuthConfig } from "./auth.js";
 export { buildMandateApprovalOptions, createAccountMandate, createMandateRouter, loadMandateConfig } from "./mandates.js";
 export { createIntentRouter, loadIntentConfig, type GeminiIntentClient } from "./intents.js";
 export { createApproveBulkHook, createBulkRouter, loadBulkConfig, type BulkConfig } from "./bulk/index.js";
+export { createPayPalWebhookRouter, type PayPalWebhookConfig } from "./paypal-webhook.js";
 export { GroqClient, GrokClient, type GroqClientConfig, type GrokClientConfig } from "./groq.js";
 export {
   PayPalApiError,
@@ -192,6 +194,14 @@ export function createKarenPayApi(): Express {
   app.use("/api/v1/mandates", createApproveRouter({
     ...approveConfig,
     bulkHook: createApproveBulkHook(bulkConfig),
+  }));
+  app.use("/api/v1/paypal/webhook", createPayPalWebhookRouter({
+    clientId: approveConfig.paypalClientId,
+    clientSecret: approveConfig.paypalClientSecret,
+    baseUrl: approveConfig.paypalBaseUrl,
+    webhookId: process.env.PAYPAL_WEBHOOK_ID ?? "",
+    supabaseUrl: approveConfig.supabaseUrl,
+    supabaseServiceRoleKey: approveConfig.supabaseServiceRoleKey,
   }));
   app.use("/api/v1/bulk", createBulkRouter(bulkConfig));
   return app;

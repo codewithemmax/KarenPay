@@ -304,6 +304,7 @@ Copy `.env.example` to `.env` in the root directory:
 PAYPAL_CLIENT_ID=your_paypal_sandbox_client_id
 PAYPAL_CLIENT_SECRET=your_paypal_sandbox_client_secret
 PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
+PAYPAL_WEBHOOK_ID=your_paypal_sandbox_webhook_id
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.5-flash
 SUPABASE_URL=https://your-project.supabase.co
@@ -317,6 +318,30 @@ MANDATE_TTL_SECONDS=120
 MAX_AMOUNT_MINOR=50000
 ALLOWED_CURRENCIES=USD
 ```
+
+### PayPal webhook confirmation
+
+Configure a PayPal Sandbox webhook for the deployed API URL:
+
+```text
+POST https://your-api.example.com/api/v1/paypal/webhook
+```
+
+Set `PAYPAL_WEBHOOK_ID` to the webhook ID shown in the PayPal Developer
+Dashboard. Subscribe to `PAYMENT.PAYOUTS-ITEM.SUCCEEDED`,
+`PAYMENT.PAYOUTS-ITEM.FAILED`, `PAYMENT.PAYOUTS-ITEM.BLOCKED`,
+`PAYMENT.PAYOUTS-ITEM.DENIED`, and `PAYMENT.PAYOUTS-ITEM.RETURNED`.
+
+KarenPay verifies each notification through PayPal's
+`/v1/notifications/verify-webhook-signature` endpoint and matches the event's
+`payout_batch_id` to `mandates.paypal_ref`. A successful event confirms the
+mandate as `PAID` when it is still pending; a failed terminal event confirms it
+as `FAILED` when it is still pending. The current approval path also records
+`PAID` when PayPal accepts payout creation, so webhook processing currently
+reconciles pending records and provides verified delivery notifications rather
+than delaying the initial response. The
+endpoint returns HTTP 2xx for valid, unmatched, and unsupported events so
+PayPal does not retry notifications that KarenPay cannot associate.
 
 Apply database migrations via the Supabase SQL editor from [`supabase/migrations/`](file:///C:/dev/KarenPay/supabase/migrations/).
 
