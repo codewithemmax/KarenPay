@@ -603,8 +603,13 @@ function PayTerminalInner(): React.JSX.Element {
         setStep(3);
         setIsSubmittingIntent(false);
 
-        // Immediately speak server's exact response.spoken and enforce readout lock
-        speakServerText(mandateData.spoken, { isMandatoryReadout: true });
+        if (isVoiceOnlyMode) {
+          speakServerText(mandateData.spoken, { isMandatoryReadout: true });
+        } else {
+          setReadoutCompletedCleanly(true);
+          setReadoutInterrupted(false);
+          setStep(4);
+        }
       } catch (err) {
         console.error("[Single Pay UI] Network or processing error during transfer creation:", err);
         const netErr = "Unable to connect to the payment service.";
@@ -619,6 +624,7 @@ function PayTerminalInner(): React.JSX.Element {
       speakServerText,
       startListening,
       stopListening,
+      isVoiceOnlyMode,
     ],
   );
 
@@ -638,9 +644,15 @@ function PayTerminalInner(): React.JSX.Element {
   const handleStopOrReplayReadout = useCallback(() => {
     if (!mandate) return;
     if (isSpeakingReadout) {
-      stopActiveSpeech(true);
+      stopActiveSpeech(isVoiceOnlyMode);
+      if (!isVoiceOnlyMode) {
+        setReadoutInterrupted(false);
+        setReadoutCompletedCleanly(true);
+      }
       announcePolite(
-        "Readout stopped. Replay the full readout to unlock approval.",
+        isVoiceOnlyMode
+          ? "Readout stopped. Replay the full readout to unlock approval."
+          : "Readout stopped. You can approve using the details shown.",
       );
     } else {
       setStep(3);
@@ -649,6 +661,7 @@ function PayTerminalInner(): React.JSX.Element {
   }, [
     announcePolite,
     isSpeakingReadout,
+    isVoiceOnlyMode,
     mandate,
     speakServerText,
     stopActiveSpeech,
@@ -1174,7 +1187,9 @@ function PayTerminalInner(): React.JSX.Element {
               <div className="rounded-xl border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4">
                 <p className="flex items-center gap-2 text-[14px] font-bold text-[var(--text-muted)]">
                   <Volume2 className="h-4 w-4" aria-hidden="true" />
-                  Reading payment details aloud
+                  {isVoiceOnlyMode
+                    ? "Payment details read aloud"
+                    : "Payment details"}
                 </p>
                 <p
                   data-testid="server-spoken-readout"
@@ -1184,7 +1199,7 @@ function PayTerminalInner(): React.JSX.Element {
                 </p>
               </div>
 
-              {/* Stop / Replay Readout Button (>= 48px) */}
+              {/* Optional readout button (>= 48px) */}
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
@@ -1194,7 +1209,7 @@ function PayTerminalInner(): React.JSX.Element {
                   {isSpeakingReadout ? (
                     <>
                       <Square className="h-5 w-5 shrink-0" aria-hidden="true" />
-                      <span>Stop / Replay Readout</span>
+                      <span>Stop readout</span>
                     </>
                   ) : (
                     <>
@@ -1202,15 +1217,15 @@ function PayTerminalInner(): React.JSX.Element {
                         className="h-5 w-5 shrink-0"
                         aria-hidden="true"
                       />
-                      <span>Stop / Replay Readout</span>
+                      <span>Read details aloud</span>
                     </>
                   )}
                 </button>
 
                 {readoutInterrupted ? (
                   <p className="text-[14px] font-bold text-[var(--danger)]">
-                    Readout was stopped early. Replay the full readout to unlock
-                    approval.
+                    Readout was stopped early. Replay it or approve using the
+                    details shown above.
                   </p>
                 ) : null}
               </div>
@@ -1322,8 +1337,7 @@ function PayTerminalInner(): React.JSX.Element {
                     className="mr-1.5 inline h-4 w-4"
                     aria-hidden="true"
                   />
-                  Approval remains locked until the spoken readout completes
-                  without interruption.
+                  Review the payment details before approving.
                 </p>
               ) : null}
 

@@ -30,6 +30,7 @@ import {
 } from "../../../../../packages/core/src/index.js";
 import { formatUsdMinor } from "../../lib/demoData";
 import { useAnnounce } from "../LiveRegions";
+import { useVoiceOnlyMode } from "../VoiceModeToggle";
 
 function truncateHash(hash: string): string {
   if (!hash || hash.length <= 16) return hash;
@@ -391,6 +392,7 @@ function TransferApprovalWidgetCard({
 }): React.JSX.Element {
   const tamperSwitchId = useId();
   const { announcePolite, announceAssertive } = useAnnounce();
+  const [isVoiceOnlyMode] = useVoiceOnlyMode();
 
   const [fetched, setFetched] = useState<FetchedBulkMandatePayload | null>(
     null,
@@ -577,7 +579,12 @@ function TransferApprovalWidgetCard({
         );
         setFetched(data);
         setIsLoadingMandate(false);
-        startMandatoryReadout(data.spoken);
+        if (isVoiceOnlyMode) {
+          startMandatoryReadout(data.spoken);
+        } else {
+          setReadoutCompletedCleanly(true);
+          setReadoutInterrupted(false);
+        }
       } catch (err) {
         if (!cancelled) {
           console.error(
@@ -593,7 +600,13 @@ function TransferApprovalWidgetCard({
     return () => {
       cancelled = true;
     };
-  }, [activeBatchId, activeItemId, finalOutcome, startMandatoryReadout]);
+  }, [
+    activeBatchId,
+    activeItemId,
+    finalOutcome,
+    isVoiceOnlyMode,
+    startMandatoryReadout,
+  ]);
 
   useEffect(() => {
     if (!fetched?.mandate?.expiresAt || finalOutcome) return;
@@ -901,12 +914,14 @@ function TransferApprovalWidgetCard({
             <Volume2 className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
               {isSpeakingReadout
-                ? "Speaking mandatory readout…"
-                : readoutCompletedCleanly
-                  ? "Readout complete — ready for passkey"
-                  : readoutInterrupted
-                    ? "Readout interrupted — replay required"
-                    : "Mandatory readout pending"}
+                ? "Speaking readout…"
+                : readoutInterrupted
+                  ? "Readout interrupted"
+                  : isVoiceOnlyMode
+                    ? readoutCompletedCleanly
+                      ? "Readout complete — ready for passkey"
+                      : "Readout pending"
+                    : "Details ready — review before approving"}
             </span>
           </span>
           <button
@@ -914,7 +929,11 @@ function TransferApprovalWidgetCard({
             data-testid="bulk-replay-readout-button"
             onClick={() => {
               if (isSpeakingReadout) {
-                stopReadout(true);
+                stopReadout(isVoiceOnlyMode);
+                if (!isVoiceOnlyMode) {
+                  setReadoutInterrupted(false);
+                  setReadoutCompletedCleanly(true);
+                }
               } else {
                 startMandatoryReadout(fetched.spoken);
               }
@@ -932,7 +951,7 @@ function TransferApprovalWidgetCard({
                   className="h-3.5 w-3.5 shrink-0"
                   aria-hidden="true"
                 />
-                <span>Replay readout</span>
+                <span>Read details aloud</span>
               </>
             )}
           </button>
@@ -1010,7 +1029,7 @@ function TransferApprovalWidgetCard({
                 : isSpeakingReadout
                   ? "Listening to readout…"
                   : !readoutCompletedCleanly
-                    ? "Replay readout to unlock"
+                    ? "Review details to unlock"
                     : isApproving
                       ? "Waiting for passkey…"
                       : "Approve with passkey (fingerprint or face)"}
