@@ -452,6 +452,7 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
       paypalRef,
     ): Promise<void> {
       await store.updateBatchItem(itemId, { status: outcome });
+      const item = await store.getBatchItemById(itemId);
       await store.audit(
         accountId,
         mandateId,
@@ -460,6 +461,11 @@ export function createApproveBulkHook(config: BulkConfig): ApproveBulkHook {
           batchId,
           itemId,
           outcome,
+          ...(item?.amount_minor !== null && item?.amount_minor !== undefined
+            ? { amountMinor: item.amount_minor }
+            : {}),
+          ...(item ? { recipientName: item.resolved_name ?? item.pasted_name } : {}),
+          ...(item ? { bankName: item.bank_name, accountLast4: item.account_number.slice(-4) } : {}),
           ...(paypalRef ? { paypalRef } : {}),
         },
       );

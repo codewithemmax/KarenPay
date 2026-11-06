@@ -3,7 +3,9 @@
 import {
   CheckCircle2,
   Clock,
+  Download,
   RefreshCw,
+  ReceiptText,
   X,
   XCircle,
 } from "lucide-react";
@@ -224,6 +226,52 @@ function formatAuditTimestamp(iso: string): string {
   }
 }
 
+function isConfirmedTransfer(event: AuditEventRecord): boolean {
+  return event.eventType === "PAYMENT_SENT" || event.eventType === "BULK_ITEM_PAID";
+}
+
+function getEventAmountMinor(event: AuditEventRecord): number | null {
+  if (typeof event.detail.amountMinor === "number") {
+    return event.detail.amountMinor;
+  }
+  if (typeof event.detail.totalMinor === "number") {
+    return event.detail.totalMinor;
+  }
+  return null;
+}
+
+function buildReceiptText(event: AuditEventRecord): string {
+  const amountMinor = getEventAmountMinor(event);
+  const currency =
+    typeof event.detail.currency === "string" ? event.detail.currency : "USD";
+  const recipient = getRecipientName(event);
+  const account =
+    typeof event.detail.accountLast4 === "string"
+      ? `Account ending in ${event.detail.accountLast4}`
+      : "Saved PayPal sandbox recipient";
+  const reference =
+    typeof event.detail.paypalRef === "string"
+      ? event.detail.paypalRef
+      : typeof event.detail.payoutBatchId === "string"
+        ? event.detail.payoutBatchId
+        : "Not available";
+
+  return [
+    "KARENPAY PAYMENT RECEIPT",
+    "========================",
+    `Status: CONFIRMED`,
+    `Recipient: ${recipient}`,
+    `Amount: ${amountMinor === null ? "Not available" : formatUsdMinor(amountMinor)} ${currency}`,
+    `Account: ${account}`,
+    `Date: ${formatAuditTimestamp(event.createdAt)}`,
+    `PayPal reference: ${reference}`,
+    `KarenPay event: ${event.eventType}`,
+    `Receipt ID: ${event.id}`,
+    "",
+    "This receipt confirms a KarenPay sandbox transfer record.",
+  ].join("\n");
+}
+
 export default function ActivityPage(): React.JSX.Element {
   const router = useRouter();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -310,6 +358,22 @@ export default function ActivityPage(): React.JSX.Element {
   const handleCloseInspector = () => {
     setSelectedEvent(null);
     lastTriggerRef.current?.focus();
+  };
+
+  const handleDownloadReceipt = () => {
+    if (!selectedEvent || !isConfirmedTransfer(selectedEvent)) return;
+    const blob = new Blob([buildReceiptText(selectedEvent)], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `karenpay-receipt-${selectedEvent.id}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    announcePolite("Payment receipt downloaded.");
   };
 
   return (
@@ -488,6 +552,17 @@ export default function ActivityPage(): React.JSX.Element {
                       ? formatUsdMinor(selectedEvent.detail.totalMinor)
                       : "Not provided"}
                 </dd>
+                {isConfirmedTransfer(selectedEvent) ? (
+                  <button
+                    type="button"
+                    onClick={handleDownloadReceipt}
+                    className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--primary)] px-4 py-3 text-[16px] font-bold text-white hover:bg-[var(--primary-hover)]"
+                  >
+                    <Download className="h-5 w-5" aria-hidden="true" />
+                    <ReceiptText className="h-5 w-5" aria-hidden="true" />
+                    Download receipt
+                  </button>
+                ) : null}
               </div>
               <div className="border-t border-[var(--divider)] pt-2.5">
                 <dt className="text-[13px] font-bold uppercase tracking-wider text-[var(--text-muted)]">

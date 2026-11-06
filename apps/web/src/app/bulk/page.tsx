@@ -74,6 +74,10 @@ export default function BulkPayPage(): React.JSX.Element {
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isBusy, setIsBusy] = useState<boolean>(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [bulkPin, setBulkPin] = useState<string>("");
+  const [bulkPinAcknowledged, setBulkPinAcknowledged] =
+    useState<boolean>(false);
+  const [isBulkPinSending, setIsBulkPinSending] = useState<boolean>(false);
 
   const [batchId, setBatchId] = useState<string | null>(null);
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
@@ -745,6 +749,110 @@ export default function BulkPayPage(): React.JSX.Element {
     [activateNextItem, speakServerMessage],
   );
 
+  const handleApproveAllWithPin = useCallback(async () => {
+    if (!batchId || isBulkPinSending || isBusy) return;
+    if (!/^\d{6}$/.test(bulkPin)) {
+      const message = "Enter your 6-digit PIN before approving the batch.";
+      setErrorBanner(message);
+      announceAssertive(message);
+      return;
+    }
+    if (!bulkPinAcknowledged) {
+      const message =
+        "Check every recipient, bank, account ending, amount, and total before approving the batch.";
+      setErrorBanner(message);
+      announceAssertive(message);
+      return;
+    }
+
+    setIsBulkPinSending(true);
+    setIsBusy(true);
+    setErrorBanner(null);
+    try {
+      for (let count = 0; count < 5; count += 1) {
+        const nextResponse = await fetch(`/api/v1/bulk/${batchId}/next`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const nextData = (await nextResponse.json()) as {
+          activeItem?: { itemId: string; mandateId: string } | null;
+          status?: string;
+          message?: string;
+          spoken?: string;
+          paidMinor?: number;
+          runningTotalMinor?: number;
+        };
+        if (!nextResponse.ok) {
+          throw new Error(nextData.spoken ?? nextData.message ?? "The next transfer could not be prepared.");
+        }
+        if (!nextData.activeItem) {
+          setBatchStatus(nextData.status ?? "COMPLETED");
+          setRunningTotalMinor(nextData.paidMinor ?? nextData.runningTotalMinor ?? 0);
+          break;
+        }
+
+        const mandateResponse = await fetch(
+          `/api/v1/bulk/${batchId}/items/${nextData.activeItem.itemId}/mandate`,
+          { credentials: "include", cache: "no-store" },
+        );
+        const mandateData = (await mandateResponse.json()) as {
+          mandateHash?: string;
+          message?: string;
+          spoken?: string;
+        };
+        if (!mandateResponse.ok || !mandateData.mandateHash) {
+          throw new Error(mandateData.spoken ?? mandateData.message ?? "The transfer mandate could not be loaded.");
+        }
+
+        const approvalResponse = await fetch(
+          `/api/v1/mandates/${nextData.activeItem.mandateId}/approve`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fallbackMethod: "pin",
+              pin: bulkPin,
+              challenge: mandateData.mandateHash,
+            }),
+          },
+        );
+        const approvalData = (await approvalResponse.json()) as {
+          code?: string;
+          message?: string;
+          spoken?: string;
+        };
+        if (!approvalResponse.ok || approvalData.code !== "PAID") {
+          throw new Error(approvalData.spoken ?? approvalData.message ?? "A bulk transfer was not sent.");
+        }
+      }
+      if (batchId) {
+        await fetch(`/api/v1/bulk/${batchId}/next`, {
+          method: "POST",
+          credentials: "include",
+        });
+      }
+      setActiveItemId(null);
+      setBatchStatus("COMPLETED");
+      announcePolite("All approved bulk payments were sent.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The bulk payment could not be completed.";
+      setErrorBanner(message);
+      announceAssertive(message);
+    } finally {
+      setIsBusy(false);
+      setIsBulkPinSending(false);
+    }
+  }, [
+    announceAssertive,
+    announcePolite,
+    batchId,
+    bulkPin,
+    bulkPinAcknowledged,
+    isBusy,
+    isBulkPinSending,
+  ]);
+
   const handleResetBatch = () => {
     setBatchId(null);
     setBatchStatus(null);
@@ -799,8 +907,8 @@ export default function BulkPayPage(): React.JSX.Element {
           </div>
           <p className="mt-1 text-[15px] text-[var(--text-muted)]">
             Paste up to 5 recipients from WhatsApp, confirm names against the
-            simulated directory, set an amount, and approve each test payment
-            one at a time with your passkey (fingerprint or face).
+            simulated directory, set an amount, and approve the batch with a
+            passkey or one 6-digit PIN.
           </p>
         </div>
 
@@ -815,6 +923,49 @@ export default function BulkPayPage(): React.JSX.Element {
           </button>
         ) : null}
       </header>
+
+      {batchId && (batchStatus === "CONFIRMED" || batchStatus === "IN_PROGRESS") ? (
+        <section className="rounded-2xl border-2 border-[var(--danger)] bg-[var(--warning-bg)] p-5">
+          <h2 className="text-[18px] font-bold text-[var(--warning-text)]">
+            Approve the entire batch with PIN
+          </h2>
+          <p className="mt-2 text-[15px] font-medium text-[var(--warning-text)]">
+            This sends every remaining transfer in this batch. Check each
+            recipient, bank, account ending, amount, and the total above before
+            continuing. PIN approval cannot be undone.
+          </p>
+          <label className="mt-3 flex items-start gap-2 text-[14px] font-bold text-[var(--warning-text)]">
+            <input
+              type="checkbox"
+              checked={bulkPinAcknowledged}
+              onChange={(event) => setBulkPinAcknowledged(event.target.checked)}
+              className="mt-1 h-5 w-5"
+            />
+            <span>I checked the full batch details and want to send all remaining transfers.</span>
+          </label>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={bulkPin}
+              onChange={(event) =>
+                setBulkPin(event.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              placeholder="6-digit PIN"
+              className="min-h-[48px] flex-1 rounded-xl border-2 border-[var(--border-strong)] bg-[var(--surface)] px-4 text-[18px] font-bold tracking-widest"
+            />
+            <button
+              type="button"
+              disabled={isBulkPinSending || isBusy || !bulkPinAcknowledged}
+              onClick={() => void handleApproveAllWithPin()}
+              className="min-h-[48px] rounded-xl border-2 border-[var(--border-strong)] bg-[var(--primary)] px-5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isBulkPinSending ? "Sending batch..." : "Approve all with PIN"}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {/* Running Total & Cancel Remaining Bar (Rule 6 & Rule 13) */}
       {batchId ? (

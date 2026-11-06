@@ -283,19 +283,6 @@ export function createApproveRouter(config: ApproveConfig): Router {
           return sendStoredOutcome(response, mandate);
         }
 
-        if (await config.bulkHook?.isBulkMandate?.(accountId, mandate)) {
-          console.warn(`[Approve] PIN fallback rejected: mandate ${mandateId} is a bulk payment requiring passkey`);
-          await store.audit(accountId, mandateId, "APPROVAL_REJECTED", {
-            code: "APPROVAL_REJECTED",
-            reason: "PIN_NOT_ALLOWED_FOR_BULK",
-          });
-          return response.status(401).json({
-            code: "APPROVAL_REJECTED",
-            message: "Passkey approval is required for bulk payments.",
-            spoken: "Passkey approval is required for bulk payments.",
-          });
-        }
-
         if (challenge !== mandate.mandate_hash) {
           console.warn(`[Approve] PIN challenge mismatch for mandate ${mandateId}: received ${challenge}, expected ${mandate.mandate_hash}`);
           await store.audit(accountId, mandateId, "APPROVAL_REJECTED", {
