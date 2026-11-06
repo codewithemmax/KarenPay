@@ -28,6 +28,7 @@ export default function RegisterPage() {
   const [method, setMethod] = useState<RegisterMethod>("pin");
   const [displayName, setDisplayName] = useState<string>("");
   const [pin, setPin] = useState<string>("");
+  const [pinConfirmation, setPinConfirmation] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [otpCode, setOtpCode] = useState<string>("");
   const [otpSent, setOtpSent] = useState<boolean>(false);
@@ -67,15 +68,7 @@ export default function RegisterPage() {
   };
 
   const handleSendEmailOtp = async () => {
-    const trimmedName = displayName.trim();
     const trimmedEmail = email.trim().toLowerCase();
-
-    if (!trimmedName) {
-      const msg = "Please enter your name before requesting an email code.";
-      setErrorMessage(msg);
-      announceStatus(msg, "error");
-      return;
-    }
 
     if (!trimmedEmail || !trimmedEmail.includes("@")) {
       const msg = "Please enter a valid email address.";
@@ -97,7 +90,7 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: trimmedEmail,
-          displayName: trimmedName,
+          ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
         }),
       });
 
@@ -140,12 +133,6 @@ export default function RegisterPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmedName = displayName.trim();
-    if (!trimmedName) {
-      const msg = "Please enter your name before creating your account.";
-      setErrorMessage(msg);
-      announceStatus(msg, "error");
-      return;
-    }
 
     setLoading(true);
     setErrorMessage(null);
@@ -154,9 +141,24 @@ export default function RegisterPage() {
 
     try {
       if (method === "pin") {
+        const trimmedEmail = email.trim().toLowerCase();
         const trimmedPin = pin.trim();
+        if (!trimmedEmail || !trimmedEmail.includes("@")) {
+          const msg = "Please enter an email address for account sign-in.";
+          setErrorMessage(msg);
+          announceStatus(msg, "error");
+          setLoading(false);
+          return;
+        }
         if (!/^\d{6}$/.test(trimmedPin)) {
           const msg = "Please enter a 6-digit numeric PIN.";
+          setErrorMessage(msg);
+          announceStatus(msg, "error");
+          setLoading(false);
+          return;
+        }
+        if (pinConfirmation !== trimmedPin) {
+          const msg = "The two PIN entries do not match.";
           setErrorMessage(msg);
           announceStatus(msg, "error");
           setLoading(false);
@@ -168,7 +170,8 @@ export default function RegisterPage() {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            displayName: trimmedName,
+            email: trimmedEmail,
+            ...(trimmedName ? { displayName: trimmedName } : {}),
             pin: trimmedPin,
           }),
         });
@@ -183,14 +186,14 @@ export default function RegisterPage() {
           const msg =
             body.spoken ??
             body.message ??
-            "Could not create your 6-digit PIN. Please try again.";
+            "Could not create your account PIN. Please try again.";
           setErrorMessage(msg);
           announceStatus(msg, "error");
           return;
         }
 
         try {
-          window.localStorage.setItem("kp_holder_name", trimmedName);
+          window.localStorage.setItem("kp_holder_name", trimmedName || trimmedEmail.split("@")[0]);
         } catch {
           // Ignore storage write failure
         }
@@ -225,6 +228,13 @@ export default function RegisterPage() {
           setLoading(false);
           return;
         }
+        if (trimmedPin && pinConfirmation !== trimmedPin) {
+          const msg = "The two PIN entries do not match.";
+          setErrorMessage(msg);
+          announceStatus(msg, "error");
+          setLoading(false);
+          return;
+        }
 
         const verifyRes = await fetch("/api/v1/auth/email/verify-otp", {
           method: "POST",
@@ -233,7 +243,7 @@ export default function RegisterPage() {
           body: JSON.stringify({
             email: trimmedEmail,
             code: trimmedOtp,
-            displayName: trimmedName,
+            ...(trimmedName ? { displayName: trimmedName } : {}),
             pin: trimmedPin || undefined,
           }),
         });
@@ -278,7 +288,7 @@ export default function RegisterPage() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          displayName: trimmedName,
+          ...(trimmedName ? { displayName: trimmedName } : {}),
           crossDevice: method === "qr",
         }),
       });
@@ -482,7 +492,7 @@ export default function RegisterPage() {
                 htmlFor="account-holder-name"
                 className="block text-base font-bold text-text"
               >
-                Your name
+                Display name (optional)
               </label>
               <input
                 id="account-holder-name"
@@ -512,6 +522,28 @@ export default function RegisterPage() {
             {method === "pin" && (
               <div>
                 <label
+                  htmlFor="account-pin-email"
+                  className="block text-base font-bold text-text"
+                >
+                  Email address
+                </label>
+                <input
+                  id="account-pin-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                  placeholder="you@example.com"
+                  className="mt-2 min-h-[48px] w-full rounded-input border-2 border-input-border bg-surface px-4 py-3 text-base text-text placeholder:text-text-muted"
+                />
+              </div>
+            )}
+
+            {method === "pin" && (
+              <div>
+                <label
                   htmlFor="account-pin"
                   className="block text-base font-bold text-text"
                 >
@@ -536,6 +568,28 @@ export default function RegisterPage() {
                   You will also use this 6-digit PIN to approve voice payments
                   after the readout finishes.
                 </p>
+                <label
+                  htmlFor="account-pin-confirmation"
+                  className="mt-4 block text-base font-bold text-text"
+                >
+                  Confirm your 6-digit PIN
+                </label>
+                <input
+                  id="account-pin-confirmation"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoComplete="new-password"
+                  value={pinConfirmation}
+                  onChange={(e) =>
+                    setPinConfirmation(
+                      e.target.value.replace(/\D/g, "").slice(0, 6),
+                    )
+                  }
+                  disabled={loading}
+                  placeholder="123456"
+                  className="num mt-2 min-h-[48px] w-full rounded-input border-2 border-input-border bg-surface px-4 py-3 text-lg font-bold tracking-widest text-text placeholder:text-text-muted"
+                />
               </div>
             )}
 
@@ -595,6 +649,28 @@ export default function RegisterPage() {
                         }
                         disabled={loading}
                         placeholder="654321"
+                        className="num mt-2 min-h-[48px] w-full rounded-input border-2 border-input-border bg-surface px-4 py-3 text-lg font-bold tracking-widest text-text placeholder:text-text-muted"
+                      />
+                      <label
+                        htmlFor="email-optional-pin-confirmation"
+                        className="mt-4 block text-base font-bold text-text"
+                      >
+                        Confirm your payment PIN
+                      </label>
+                      <input
+                        id="email-optional-pin-confirmation"
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={6}
+                        autoComplete="new-password"
+                        value={pinConfirmation}
+                        onChange={(e) =>
+                          setPinConfirmation(
+                            e.target.value.replace(/\D/g, "").slice(0, 6),
+                          )
+                        }
+                        disabled={loading}
+                        placeholder="123456"
                         className="num mt-2 min-h-[48px] w-full rounded-input border-2 border-input-border bg-surface px-4 py-3 text-lg font-bold tracking-widest text-text placeholder:text-text-muted"
                       />
                     </div>

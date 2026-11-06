@@ -25,7 +25,7 @@ const ceremonyLifetimeSeconds = 5 * 60;
 const sessionLifetimeSeconds = 8 * 60 * 60;
 
 const registrationOptionsRequestSchema = z.object({
-  displayName: z.string().trim().min(1).max(100),
+  displayName: z.string().trim().min(1).max(100).optional(),
   crossDevice: z.boolean().optional(),
 });
 
@@ -42,12 +42,13 @@ const credentialResponseSchema = z
   .passthrough();
 
 const pinRegisterRequestSchema = z.object({
-  displayName: z.string().trim().min(1).max(100),
+  email: z.string().trim().email(),
+  displayName: z.string().trim().min(1).max(100).optional(),
   pin: z.string().regex(/^[0-9]{6}$/, "PIN must be 6 digits"),
 });
 
 const pinLoginRequestSchema = z.object({
-  displayName: z.string().trim().min(1).max(100),
+  email: z.string().trim().email(),
   pin: z.string().regex(/^[0-9]{6}$/, "PIN must be 6 digits"),
 });
 
@@ -155,8 +156,8 @@ export function verifyPinSecret(pin: string, storedBytes: Uint8Array): boolean {
   return timingSafeEqual(expected, actual);
 }
 
-function buildPinCredentialId(displayName: string): string {
-  const normalized = displayName.trim().toLowerCase().replace(/\s+/g, " ");
+function buildPinCredentialId(email: string): string {
+  const normalized = email.trim().toLowerCase();
   const digest = createHash("sha256")
     .update(normalized, "utf8")
     .digest("base64url");
@@ -319,13 +320,14 @@ export function createAuthRouter(config: AuthConfig): Router {
     try {
       const { displayName, crossDevice } =
         registrationOptionsRequestSchema.parse(request.body);
+      const resolvedDisplayName = displayName || "KarenPay account";
       const accountId = randomUUID();
       const options = await generateRegistrationOptions({
         rpName: config.rpName,
         rpID: config.rpID,
         userID: new TextEncoder().encode(accountId),
         userName: accountId,
-        userDisplayName: displayName,
+        userDisplayName: resolvedDisplayName,
         attestationType: "none",
         authenticatorSelection: crossDevice
           ? {
@@ -342,7 +344,7 @@ export function createAuthRouter(config: AuthConfig): Router {
         kind: "registration",
         challenge: options.challenge,
         accountId,
-        displayName,
+        displayName: resolvedDisplayName,
         crossDevice: Boolean(crossDevice),
         expiresAt: expiresAt(ceremonyLifetimeSeconds),
       });
@@ -458,22 +460,23 @@ export function createAuthRouter(config: AuthConfig): Router {
   // 3. 6-Digit PIN Fallback Registration & Login (for devices without biometrics)
   router.post("/pin/register", async (request, response) => {
     try {
-      const { displayName, pin } = pinRegisterRequestSchema.parse(request.body);
-      const credentialId = buildPinCredentialId(displayName);
+      const { email, displayName, pin } = pinRegisterRequestSchema.parse(request.body);
+      const resolvedDisplayName = displayName || email.split("@")[0] || "Account";
+      const credentialId = buildPinCredentialId(email);
       const existing = await store.getCredential(credentialId);
       if (existing) {
         return response.status(409).json({
           code: "ACCOUNT_EXISTS",
           message:
-            "An account with that name already has a PIN. Please sign in instead.",
+            "An account with that email already has a PIN. Please sign in instead.",
           spoken:
-            "An account with that name already has a PIN. Please sign in instead.",
+            "An account with that email already has a PIN. Please sign in instead.",
         });
       }
 
       const accountId = randomUUID();
       const pinBytes = hashPinSecret(pin);
-      await store.createAccount(accountId, displayName);
+      await store.createAccount(accountId, resolvedDisplayName);
       await store.createCredential(
         accountId,
         {
@@ -490,15 +493,15 @@ export function createAuthRouter(config: AuthConfig): Router {
       return response.status(201).json({
         verified: true,
         accountId,
-        displayName,
+        displayName: resolvedDisplayName,
         spoken: "Your 6-digit PIN is ready.",
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return response.status(400).json({
           code: "INVALID_PIN_REQUEST",
-          message: "Please enter your name and a 6-digit PIN.",
-          spoken: "Please enter your name and a 6-digit PIN.",
+          message: "Please enter your email and a 6-digit PIN.",
+          spoken: "Please enter your email and a 6-digit PIN.",
         });
       }
       return response.status(500).json({
@@ -511,14 +514,14 @@ export function createAuthRouter(config: AuthConfig): Router {
 
   router.post("/pin/login", async (request, response) => {
     try {
-      const { displayName, pin } = pinLoginRequestSchema.parse(request.body);
-      const credentialId = buildPinCredentialId(displayName);
+      const { email, pin } = pinLoginRequestSchema.parse(request.body);
+      const credentialId = buildPinCredentialId(email);
       const credential = await store.getCredential(credentialId);
       if (!credential) {
         return response.status(401).json({
           code: "AUTH_FAILED",
-          message: "No account found with that name and PIN.",
-          spoken: "No account found with that name and PIN.",
+          message: "No account found with that email and PIN.",
+          spoken: "No account found with that email and PIN.",
         });
       }
 
@@ -541,15 +544,15 @@ export function createAuthRouter(config: AuthConfig): Router {
       return response.json({
         verified: true,
         accountId: credential.account_id,
-        displayName,
+        displayName: (await store.getAccount(credential.account_id))?.display_name ?? "Account",
         spoken: "Signed in with your 6-digit PIN.",
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return response.status(400).json({
           code: "INVALID_PIN_REQUEST",
-          message: "Please enter your name and 6-digit PIN.",
-          spoken: "Please enter your name and 6-digit PIN.",
+          message: "Please enter your email and 6-digit PIN.",
+          spoken: "Please enter your email and 6-digit PIN.",
         });
       }
       console.error("[Auth] PIN login failed unexpectedly:", error);
@@ -660,14 +663,15 @@ export function createAuthRouter(config: AuthConfig): Router {
           false,
         );
         if (pin) {
-          const pinCredId = buildPinCredentialId(resolvedName);
+          const pinCredId = buildPinCredentialId(ceremony.email!);
           const existingPin = await store.getCredential(pinCredId);
           if (!existingPin) {
+            const pinBytes = hashPinSecret(pin);
             await store.createCredential(
               accountId,
               {
                 id: pinCredId,
-                publicKey: secretBytes as WebAuthnCredential["publicKey"],
+                publicKey: pinBytes as WebAuthnCredential["publicKey"],
                 counter: 0,
                 transports: ["internal"],
               },

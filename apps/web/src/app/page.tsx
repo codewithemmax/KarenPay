@@ -130,11 +130,11 @@ export default function WelcomeSignInPage() {
 
   const handlePinSignIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmedName = displayName.trim();
+    const trimmedEmail = email.trim().toLowerCase();
     const trimmedPin = pin.trim();
 
-    if (!trimmedName) {
-      const msg = "Please enter the name on your account.";
+    if (!trimmedEmail || !trimmedEmail.includes("@")) {
+      const msg = "Please enter the email on your account.";
       setErrorMessage(msg);
       announceStatus(msg, "error");
       return;
@@ -158,7 +158,7 @@ export default function WelcomeSignInPage() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          displayName: trimmedName,
+          email: trimmedEmail,
           pin: trimmedPin,
         }),
       });
@@ -173,14 +173,14 @@ export default function WelcomeSignInPage() {
         const msg =
           body.spoken ??
           body.message ??
-          "Invalid name or 6-digit PIN. Please try again.";
+          "Invalid email or 6-digit PIN. Please try again.";
         setErrorMessage(msg);
         announceStatus(msg, "error");
         return;
       }
 
       try {
-        window.localStorage.setItem("kp_holder_name", trimmedName);
+        window.localStorage.setItem("kp_holder_name", trimmedEmail);
       } catch {
         // Ignore storage write failure
       }
@@ -471,19 +471,19 @@ export default function WelcomeSignInPage() {
             >
               <div>
                 <label
-                  htmlFor="signin-pin-name"
+                  htmlFor="signin-pin-email"
                   className="block text-base font-bold text-text"
                 >
-                  Your name
+                  Email address
                 </label>
                 <input
-                  id="signin-pin-name"
-                  type="text"
-                  autoComplete="name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  id="signin-pin-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
-                  placeholder="Ade Bello"
+                  placeholder="you@example.com"
                   className="mt-2 min-h-[48px] w-full rounded-input border-2 border-input-border bg-surface px-4 py-3 text-base text-text placeholder:text-text-muted"
                 />
               </div>
