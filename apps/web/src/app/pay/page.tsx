@@ -178,6 +178,7 @@ function PayTerminalInner(): React.JSX.Element {
 
   // Refs for Web Speech APIs
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const submissionIdRef = useRef(0);
   const silenceTimerRef = useRef<number | null>(null);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechWatchdogRef = useRef<number | null>(null);
@@ -455,23 +456,41 @@ function PayTerminalInner(): React.JSX.Element {
         announceAssertive(msg);
         return;
       }
+      if (isSubmittingIntent) {
+        return;
+      }
 
       stopListening();
       setErrorBanner(null);
       setClarificationSpoken(null);
       setClarificationCandidates([]);
+      setMandate(null);
+      setApprovalResult(null);
+      setApprovalRejected(false);
+      setReadoutCompletedCleanly(false);
+      setReadoutInterrupted(false);
+      const submissionId = submissionIdRef.current + 1;
+      submissionIdRef.current = submissionId;
       setIsSubmittingIntent(true);
       console.log(
         `[Single Pay UI] Submitting transcript to /api/v1/intent: "${cleanTranscript}"`,
       );
 
       try {
-        const intentRes = await fetch("/api/v1/intent", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: cleanTranscript }),
-        });
+        const requestIntent = () =>
+          fetch("/api/v1/intent", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript: cleanTranscript }),
+          });
+
+        let intentRes = await requestIntent();
+        if (intentRes.status === 502 || intentRes.status === 503) {
+          await new Promise((resolve) => window.setTimeout(resolve, 350));
+          if (submissionId !== submissionIdRef.current) return;
+          intentRes = await requestIntent();
+        }
 
         if (intentRes.status === 401) {
           console.warn("[Single Pay UI] Intent returned 401, redirecting to login");
@@ -482,6 +501,7 @@ function PayTerminalInner(): React.JSX.Element {
         const intentData = (await intentRes.json()) as IntentResponse;
 
         if (!intentRes.ok) {
+          if (submissionId !== submissionIdRef.current) return;
           console.error(
             `[Single Pay UI] Intent recognition failed (${intentRes.status}):`,
             intentData,
@@ -496,6 +516,8 @@ function PayTerminalInner(): React.JSX.Element {
           setIsSubmittingIntent(false);
           return;
         }
+
+        if (submissionId !== submissionIdRef.current) return;
 
         console.log(`[Single Pay UI] Intent recognized successfully:`, {
           needsClarification: intentData.needsClarification,
@@ -577,6 +599,7 @@ function PayTerminalInner(): React.JSX.Element {
         };
 
         if (!mandateRes.ok) {
+          if (submissionId !== submissionIdRef.current) return;
           console.error(
             `[Single Pay UI] Mandate creation rejected (${mandateRes.status}):`,
             mandateData,
@@ -592,6 +615,8 @@ function PayTerminalInner(): React.JSX.Element {
           setIsSubmittingIntent(false);
           return;
         }
+
+        if (submissionId !== submissionIdRef.current) return;
 
         console.log(`[Single Pay UI] Mandate created successfully:`, {
           mandateId: mandateData.mandateId,
@@ -611,6 +636,7 @@ function PayTerminalInner(): React.JSX.Element {
           setStep(4);
         }
       } catch (err) {
+        if (submissionId !== submissionIdRef.current) return;
         console.error("[Single Pay UI] Network or processing error during transfer creation:", err);
         const netErr = "Unable to connect to the payment service.";
         setErrorBanner(netErr);
@@ -625,6 +651,7 @@ function PayTerminalInner(): React.JSX.Element {
       startListening,
       stopListening,
       isVoiceOnlyMode,
+      isSubmittingIntent,
     ],
   );
 
@@ -1054,6 +1081,7 @@ function PayTerminalInner(): React.JSX.Element {
                 type="button"
                 variant="primary"
                 onClick={isListening ? stopListening : startListening}
+                disabled={isSubmittingIntent}
                 className="min-h-[76px] px-5 text-[20px] shadow-none"
               >
                 <Mic className="h-6 w-6 shrink-0" aria-hidden="true" />
@@ -1075,6 +1103,7 @@ function PayTerminalInner(): React.JSX.Element {
                 <Button
                   type="button"
                   variant="secondary"
+                  disabled={isSubmittingIntent}
                   onClick={() => void submitTranscript(transcript)}
                   className="min-h-[56px] border border-[var(--divider)] bg-[var(--surface-tint)] px-5 text-[18px] shadow-none"
                 >
