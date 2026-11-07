@@ -386,13 +386,32 @@ export default function BulkPayPage(): React.JSX.Element {
         return;
       }
 
-      const data = (await res.json()) as {
+      const responseText = await res.text();
+      let data: {
         status?: string;
         totalMinor?: number;
         spoken?: string;
         message?: string;
         widgets?: unknown[];
       };
+      try {
+        data = JSON.parse(responseText) as typeof data;
+      } catch {
+        const upstreamMessage =
+          res.status === 504
+            ? "The bulk planner took too long to respond. Please try again with a simple amount such as “25 each”."
+            : res.status >= 500
+              ? "The bulk payment service is temporarily unavailable. Please try again."
+              : "The bulk payment request returned an invalid response.";
+        console.error(
+          `[Bulk Page] Plan returned non-JSON response (${res.status}):`,
+          responseText.slice(0, 300),
+        );
+        setErrorBanner(upstreamMessage);
+        announceAssertive(upstreamMessage);
+        appendTurn("server", upstreamMessage, []);
+        return;
+      }
 
       if (!res.ok) {
         console.error(

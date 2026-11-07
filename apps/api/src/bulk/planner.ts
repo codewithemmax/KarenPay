@@ -77,6 +77,23 @@ export class GoogleBulkGeminiPlannerClient implements BulkGeminiPlannerClient {
     instruction: string,
     recipients: readonly BulkGeminiRecipientInput[],
   ): Promise<unknown> {
+    // Uniform amount instructions are deterministic and should not wait for an
+    // external model. This also keeps common bulk demos reliable when a model
+    // provider is slow or temporarily unavailable.
+    const parsedAmounts = parseInstructionAmountsMinor(instruction);
+    if (parsedAmounts.length === 1) {
+      console.log(
+        `[Bulk Plan] Deterministic parser found single uniform amount: ${parsedAmounts[0]} minor units for all ${recipients.length} recipients`,
+      );
+      return {
+        needsClarification: false,
+        items: recipients.map((r) => ({
+          recipientId: r.recipientId,
+          amountMinor: parsedAmounts[0]!,
+        })),
+      };
+    }
+
     const prompt = [
       "Extract a sandbox bulk transfer amount plan from the user's instruction.",
       'Return JSON only matching the schema: {"needsClarification": boolean, "items": [{"recipientId": string, "amountMinor": integer}]}.',
@@ -186,11 +203,10 @@ export class GoogleBulkGeminiPlannerClient implements BulkGeminiPlannerClient {
       }
     }
 
-    // 4. Deterministic fallback for uniform amounts (e.g., "25 each", "$50 each", "Send 50 dollars")
+    // Fallback for uniform amounts when all configured model providers fail.
     console.log(
       `[Bulk Plan] Attempting deterministic fallback parsing for instruction: "${instruction}"...`,
     );
-    const parsedAmounts = parseInstructionAmountsMinor(instruction);
     if (parsedAmounts.length === 1) {
       console.log(
         `[Bulk Plan] Deterministic parser found single uniform amount: ${parsedAmounts[0]} minor units for all ${recipients.length} recipients`,

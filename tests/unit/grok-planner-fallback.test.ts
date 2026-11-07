@@ -126,7 +126,7 @@ describe("GrokClient & Multi-Provider LLM Fallback", () => {
       },
     ];
 
-    it("falls back to Grok when Gemini returns 503 UNAVAILABLE overload", async () => {
+    it("uses deterministic parsing before contacting Grok for a uniform amount", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -176,10 +176,10 @@ describe("GrokClient & Multi-Provider LLM Fallback", () => {
       expect(result.items).toHaveLength(2);
       expect(result.items[0].amountMinor).toBe(5000);
       expect(result.items[1].amountMinor).toBe(5000);
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("falls back to Groq when Gemini fails and Groq is configured", async () => {
+    it("uses deterministic parsing before contacting Groq for a uniform amount", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -227,8 +227,7 @@ describe("GrokClient & Multi-Provider LLM Fallback", () => {
       expect(result.needsClarification).toBe(false);
       expect(result.items).toHaveLength(2);
       expect(result.items[0].amountMinor).toBe(2500);
-      expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch.mock.calls[0][0]).toBe("https://api.groq.com/openai/v1/chat/completions");
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("falls back to deterministic parsing when Gemini 503s and no fallback key is configured", async () => {
