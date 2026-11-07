@@ -330,10 +330,14 @@ export default function WelcomeSignInPage() {
     <div className="flex flex-1 flex-col justify-between gap-6">
       <header className="flex items-center gap-3 pt-2">
         <div
-          aria-hidden="true"
-          className="flex h-12 w-12 items-center justify-center rounded-input bg-ink text-peach"
+          className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-input"
         >
-          <ShieldCheck aria-hidden="true" className="h-6 w-6" />
+          <img
+            src="/karenpay-logo.svg"
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover"
+          />
         </div>
         <span className="text-[20px] font-bold text-text">KarenPay</span>
       </header>

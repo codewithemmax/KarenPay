@@ -22,6 +22,13 @@ export const metadata: Metadata = {
   title: "KarenPay — Voice Payment Consent",
   description:
     "Send money with your voice. Nothing moves until you have heard the exact action and approved it with your fingerprint or face.",
+  icons: {
+    icon: [
+      { url: "/favicon-48.png", type: "image/png", sizes: "48x48" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
